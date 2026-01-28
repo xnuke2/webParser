@@ -21,20 +21,22 @@ public class HomeController : Controller
     /// <return>"index"</return>
     [Route("/Index")]
     [HttpGet]
-    public string Index()
+    public IActionResult Index()
     {
-        return "index";
+        return Ok("index");
     }
+    
     [Route("/Privacy")]
     [HttpGet]
-    public string Privacy()
+    public IActionResult Privacy()
     {
-        return "Privacy()";
+        return Ok("Privacy()");
     }
-    [HttpGet("/todos")]
-    public IActionResult GetTodos()
+
+    public IActionResult CreateRole()
     {
-        return Ok(_context.TodoItems.ToList());
+        return Ok("CreateRole()");
     }
+
 
 }

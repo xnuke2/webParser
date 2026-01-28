@@ -11,6 +11,12 @@ services:
       db:
         condition: service_healthy
     restart: on-failure
+    healthcheck:
+      test: [ "CMD", "curl", "--fail", "http://localhost/Index" ]
+      interval: 30s
+      retries: 3
+      start_period: 5s
+      timeout: 10s
 
   db:
     image: postgres:15
