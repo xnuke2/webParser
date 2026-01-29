@@ -8,7 +8,7 @@ namespace webParser.Controllers;
 
 [Route("api/[controller]")]
 [ApiController]
-[AllowAnonymous]
+[Authorize(Roles ="Администратор")]
 public class RoleController: Controller
 {
     private readonly ILogger<HomeController> _logger;
@@ -32,8 +32,8 @@ public class RoleController: Controller
     /// <summary>
     /// get role by id
     /// </summary>
-    [HttpGet]
-    public IActionResult GetRole(int id)
+    [HttpGet("{id}")]
+    public IActionResult GetRole([FromRoute]int id)
     {
         var role = _context.Roles.Find(id);
         return role!=null? Ok(role):NotFound();
@@ -42,9 +42,9 @@ public class RoleController: Controller
     /// add role
     /// </summary>
     [HttpPost]
-    public async Task<IActionResult> PostRole(string inputName)
+    public IActionResult AddRole(string inputName)
     {
-        if (await _context.Roles.AnyAsync(r => r.Name == inputName))
+        if (_context.Roles.Any(r => r.Name == inputName))
         {
             return BadRequest("Role already exists");
         }
@@ -55,7 +55,7 @@ public class RoleController: Controller
         };
     
         _context.Roles.Add(newRole);
-        await _context.SaveChangesAsync(); 
+        _context.SaveChangesAsync(); 
     
         return Ok("Role created successfully");
     }
@@ -64,13 +64,14 @@ public class RoleController: Controller
     /// </summary>
 
     [HttpDelete]
-    public async Task<IActionResult> DeleteRole(int id)
+    
+    public IActionResult DeleteRole(int id)
     {
         var role = _context.Roles.Find(id);
         if (role==null)
-            return BadRequest("Role already exists");
+            return BadRequest("Role no exists");
         _context.Roles.Remove(role);
-        await _context.SaveChangesAsync();
+        _context.SaveChanges();
         return Ok("Role deleted successfully");
         
     }

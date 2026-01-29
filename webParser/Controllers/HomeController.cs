@@ -1,10 +1,13 @@
 using System.Diagnostics;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using webParser.Data;
 
 namespace webParser.Controllers;
 
-
+[Route("api/[controller]")]
+[ApiController]
+[AllowAnonymous]
 public class HomeController : Controller
 {
     private readonly ILogger<HomeController> _logger;
@@ -33,10 +36,7 @@ public class HomeController : Controller
         return Ok("Privacy()");
     }
 
-    public IActionResult CreateRole()
-    {
-        return Ok("CreateRole()");
-    }
+
 
 
 }

@@ -1,5 +1,6 @@
 ﻿using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
+using System.Text.Json;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
@@ -14,33 +15,30 @@ namespace webParser.Controllers;
 [AllowAnonymous]
 [Route("api/[controller]")]
 [ApiController]
-public class AuthenticationController: Controller
+public class AuthenticationController(ILogger<HomeController> logger, AppDbContext context) : Controller
 {
-    private readonly ILogger<HomeController> _logger;
-    private readonly AppDbContext _context;
-    public AuthenticationController(ILogger<HomeController> logger,AppDbContext context)
-    {
-        _logger = logger;
-        _context = context;
-    }
+
     [HttpPost("Login")]
-    public async Task<IActionResult> Login(UserDto user)
+    public IActionResult Login(UserDto user)
     {
-        if (!(await _context.Users.AnyAsync(u => u.Login == user.Login && u.Password == user.Password)))
+        var findUser = context.Users.FirstOrDefault(u => u.Login == user.Login && u.Password == user.Password);
+        if (findUser is null)
             return Unauthorized();
-        
+        var roleName = context.Roles.Find(findUser.RoleId)?.Name;
+        if (roleName is null)
+            return Unauthorized();
         var claims = new List<Claim>
         {
-            new Claim(ClaimTypes.Name, user.Login), 
-            //new Claim(ClaimTypes.Role, _context.Roles.Find(user.roleId).Name), 
-            
+            new Claim(ClaimTypes.NameIdentifier, findUser.Id.ToString()), 
+            new Claim(ClaimTypes.Name, user.Login),
+            new Claim(ClaimTypes.Role, roleName),
         };
         // создаем JWT-токен
         var jwt = new JwtSecurityToken(
             issuer: AuthOptions.ISSUER,
             audience: AuthOptions.AUDIENCE,
             claims: claims,
-            expires: DateTime.UtcNow.Add(TimeSpan.FromMinutes(2)),
+            expires: DateTime.UtcNow.Add(TimeSpan.FromHours(5)),
             signingCredentials: new SigningCredentials(AuthOptions.GetSymmetricSecurityKey(), SecurityAlgorithms.HmacSha256));
         var encodedJwt = new JwtSecurityTokenHandler().WriteToken(jwt);
         
@@ -48,13 +46,13 @@ public class AuthenticationController: Controller
         {
             access_token = encodedJwt,
             username = user.Login
-        };    
-        return Ok(encodedJwt);
+        };
+        return Ok(JsonSerializer.Serialize(new { access_token = encodedJwt, username = user.Login }));
     }
     [HttpPost("Register")]
     public async Task<IActionResult> Register(UserDto user)
     {
-        if ((await _context.Users.AnyAsync(u => u.Login == user.Login)))
+        if ((await context.Users.AnyAsync(u => u.Login == user.Login)))
             return BadRequest("Login is already occupied");
         User newUser = new User
         {
@@ -62,8 +60,8 @@ public class AuthenticationController: Controller
             Password = user.Password,
             RoleId = 1
         };
-        _context.Users.Add(newUser);
-        await _context.SaveChangesAsync();
+        context.Users.Add(newUser);
+        await context.SaveChangesAsync();
         return Ok(newUser);
 
     }

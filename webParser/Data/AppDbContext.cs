@@ -16,7 +16,6 @@ public class AppDbContext : DbContext
     public DbSet<AnalyzedField> AnalyzedFields => Set<AnalyzedField>();
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
-        // Конфигурация для User
         modelBuilder.Entity<User>(entity =>
         {
             entity.HasKey(e => e.Id);
@@ -28,15 +27,13 @@ public class AppDbContext : DbContext
                 .HasForeignKey(u => u.RoleId)
                 .OnDelete(DeleteBehavior.Restrict);
         });
-
-        // Конфигурация для Role
+        
         modelBuilder.Entity<Role>(entity =>
         {
             entity.HasKey(e => e.Id);
             entity.Property(e => e.Name).IsRequired();
         });
-
-        // Конфигурация для AnalyzedSite
+        
         modelBuilder.Entity<AnalyzedSite>(entity =>
         {
             entity.HasKey(e => e.Id);
@@ -47,8 +44,7 @@ public class AppDbContext : DbContext
                 .HasForeignKey(a => a.UserId)
                 .OnDelete(DeleteBehavior.Restrict);
         });
-
-        // Конфигурация для AnalyzedField
+        
         modelBuilder.Entity<AnalyzedField>(entity =>
         {
             entity.HasKey(e => e.Id);
@@ -61,7 +57,7 @@ public class AppDbContext : DbContext
                 .OnDelete(DeleteBehavior.Cascade);
         });
 
-        // Конфигурация для FavoriteSite (составной ключ)
+
         modelBuilder.Entity<FavoriteSite>(entity =>
         {
             entity.HasKey(e => new { e.AnalyzedSiteId, e.UserId });
@@ -76,5 +72,30 @@ public class AppDbContext : DbContext
                 .HasForeignKey(f => f.UserId)
                 .OnDelete(DeleteBehavior.Cascade);
         });
+        modelBuilder.Entity<Role>().HasData(
+            new Role
+            {
+                Id = 1,
+                Name = "Пользователь",
+            },
+            new Role
+            {
+                Id = 2,
+                Name = "Редактор",
+            },
+             new Role
+            {
+                Id = 3,
+                Name = "Администратор",
+            }
+            );
+        modelBuilder.Entity<User>().HasData(
+            new User
+            {
+                Id = -1,
+                Login = "admin",
+                Password = "admin",
+                RoleId = 3
+            });
     }
 }

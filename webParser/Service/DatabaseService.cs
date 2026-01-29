@@ -1,7 +1,7 @@
 ﻿using Microsoft.EntityFrameworkCore;
 using webParser.Data;
 
-namespace webParser.Services;
+namespace webParser.Service;
 
 public static class DatabaseService
 {
@@ -10,10 +10,9 @@ public static class DatabaseService
         using var scope = serviceProvider.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
         
-        // Ждем подключения к БД
+
         await WaitForDatabaseAsync(db);
         
-        // Применяем миграции
         await db.Database.MigrateAsync();
     }
     
