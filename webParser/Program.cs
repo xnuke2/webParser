@@ -7,6 +7,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
 using webParser.config;
 using webParser.Data;
+using webParser.Service;
 
 
 var builder = WebApplication.CreateBuilder(args);
@@ -45,15 +46,13 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
     });
 builder.Services.AddDbContext<AppDbContext>(options =>
     options.UseNpgsql(builder.Configuration.GetConnectionString("DefaultConnection")));
-
+builder.Services.AddScoped<HtmlService>();
+builder.Services.AddScoped<StringParser>();
 builder.Services.AddControllers().AddJsonOptions(options =>
 {
-    options.JsonSerializerOptions.ReferenceHandler = System.Text.Json.Serialization.ReferenceHandler.IgnoreCycles;
-    options.JsonSerializerOptions.PropertyNamingPolicy = System.Text.Json.JsonNamingPolicy.CamelCase;
+
+    options.JsonSerializerOptions.PropertyNamingPolicy = null; 
     options.JsonSerializerOptions.WriteIndented = true;
-    options.JsonSerializerOptions.Converters.Add(new System.Text.Json.Serialization.JsonStringEnumConverter());
-    options.JsonSerializerOptions.IgnoreReadOnlyProperties = true;
-    options.JsonSerializerOptions.DefaultIgnoreCondition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull;
 });
 builder.Services.AddHttpClient();
 builder.Services.AddEndpointsApiExplorer();
@@ -95,9 +94,7 @@ builder.Services.AddSwaggerGen(options =>
         requirement.Add(new OpenApiSecuritySchemeReference("Bearer"), new List<string>());
         return requirement;
     });
-    // using System.Reflection;
-    var xmlFilename = $"{Assembly.GetExecutingAssembly().GetName().Name}.xml";
-    options.IncludeXmlComments(Path.Combine(AppContext.BaseDirectory, xmlFilename));
+
 });
 
 
