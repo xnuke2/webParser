@@ -11,7 +11,20 @@ using webParser.Service;
 
 
 var builder = WebApplication.CreateBuilder(args);
-
+builder.Services.AddCors(options =>
+{
+    options.AddPolicy("Mobile",
+        policy =>
+        {
+            policy.AllowAnyOrigin()
+                .WithOrigins(
+                    "http://localhost:8081",
+                    "http://localhost:8088")
+                .AllowAnyHeader()
+                .AllowAnyMethod()
+                .AllowCredentials(); 
+        });
+});
 builder.Configuration.AddEnvironmentVariables();
 builder.Services.AddAuthorization();
 builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
@@ -100,7 +113,7 @@ builder.Services.AddSwaggerGen(options =>
 
 
 var app = builder.Build();
-
+app.UseCors("Mobile");
 using (var scope = app.Services.CreateScope())
 {
     var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();

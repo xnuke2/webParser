@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using webParser.Data;
 using webParser.Models.Database;
+using webParser.Models.DTO.AnalyzedSite;
 
 
 namespace webParser.Controllers;
@@ -30,18 +31,21 @@ public class AnalyzedSiteController(ILogger<HomeController> logger, AppDbContext
     }
 
     [HttpPost]
-    public IActionResult Post([FromBody] string site)
+    public IActionResult Post([FromBody] CreateAnalyzedSiteDto site)
     {
-        if(site=="")
+        if(site.Url=="")
             return BadRequest("Url is required");
-        var id = Convert.ToInt32(ClaimTypes.NameIdentifier);
+        if(site.Name=="")
+            return BadRequest("Name is required");
+        var id = Convert.ToInt32(User.FindFirst(ClaimTypes.NameIdentifier)?.Value);
         if (id == 0)
             return BadRequest("no user id");
-        if(context.AnalyzedSites.Any(s=>s.Url==site))
+        if(context.AnalyzedSites.Any(s=>s.Url==site.Url))
             return BadRequest("Site already exists");
         context.AnalyzedSites.Add(new AnalyzedSite()
         {
-            Url = site,
+            Name = site.Name,
+            Url = site.Url,
             UserId = Convert.ToInt32(id)
         });
         context.SaveChanges();
@@ -50,16 +54,19 @@ public class AnalyzedSiteController(ILogger<HomeController> logger, AppDbContext
     }
 
     [HttpPut("{siteId}")]
-    public IActionResult Put([FromRoute] int siteId, [FromBody] string site)
+    public IActionResult Put([FromRoute] int siteId, [FromBody] CreateAnalyzedSiteDto site)
     {
-        if(site=="")
+        if(site.Name=="")
+            return BadRequest("Name is required");
+        if(site.Url=="")
             return BadRequest("Url is required");
         if (siteId == 0)
             return BadRequest("no site id");
         var analyzedSite = context.AnalyzedSites.Find(siteId);
         if (analyzedSite == null)
             return NotFound("site not found");
-        analyzedSite.Url=site;
+        analyzedSite.Url=site.Url;
+        analyzedSite.Name = site.Name;
         context.SaveChanges();
         return Ok(site);
     }

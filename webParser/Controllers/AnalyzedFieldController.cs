@@ -10,7 +10,7 @@ namespace webParser.Controllers;
 
 [Route("api/[controller]")]
 [ApiController]
-[Authorize(Roles = "Редактор,Администратор")]
+//[Authorize(Roles = "Редактор,Администратор")]
 public class AnalyzedFieldController(ILogger<HomeController> logger, AppDbContext context) : Controller
 {
     [HttpGet("all")]
@@ -19,10 +19,18 @@ public class AnalyzedFieldController(ILogger<HomeController> logger, AppDbContex
         return Ok(context.AnalyzedFields.ToList());
     }
 
-    [HttpGet("{siteId}")]
-    public IActionResult Get([FromRoute] int siteId)
+    [HttpGet("{id}")]
+    public IActionResult Get([FromRoute] int id)
     {
-        var site = context.AnalyzedFields.FirstOrDefault(x => x.Id == siteId);
+        var site = context.AnalyzedFields.FirstOrDefault(x => x.Id == id);
+        if (site == null)
+            return NotFound();
+        return Ok(site);
+    }
+    [HttpGet("site/{siteId}")]
+    public IActionResult GetBySiteId([FromRoute] int siteId)
+    {
+        var site = context.AnalyzedFields.Where(x => x.AnalyzedSiteId == siteId).ToList();
         if (site == null)
             return NotFound();
         return Ok(site);
