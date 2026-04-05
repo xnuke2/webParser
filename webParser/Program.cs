@@ -19,12 +19,98 @@ builder.Services.AddCors(options =>
             policy.AllowAnyOrigin()
                 .WithOrigins(
                     "http://localhost:8081",
-                    "http://localhost:8088")
+                    "http://192.168.31.200:8081")
                 .AllowAnyHeader()
                 .AllowAnyMethod()
                 .AllowCredentials(); 
         });
 });
+// Устанавливаем переменную окружения для правильного пути
+Environment.SetEnvironmentVariable("PLAYWRIGHT_BROWSERS_PATH", "/app/bin/.playwright");
+Environment.SetEnvironmentVariable("DOTNET_PLAYWRIGHT_PATH", "/app/bin/.playwright");
+builder.Services.Configure<HtmlServiceOptions>(builder.Configuration.GetSection("HtmlService"));
+builder.Services.AddSingleton<HtmlService>();
+// Настройки из appsettings.json
+builder.Services.Configure<HtmlServiceOptions>(
+    builder.Configuration.GetSection("HtmlService"));
+
+builder.Services.AddHttpClient();
+builder.Services.AddSingleton<HtmlService>();
+Console.WriteLine("Playwright browsers path: " + Environment.GetEnvironmentVariable("PLAYWRIGHT_BROWSERS_PATH"));
+
+// try
+// {
+//     // Проверяем установку Playwright
+//     var playwrightBrowsersPath = Environment.GetEnvironmentVariable("PLAYWRIGHT_BROWSERS_PATH") ?? "/app/bin/.playwright";
+//     Console.WriteLine($"Playwright browsers path: {playwrightBrowsersPath}");
+//     
+//     // Проверяем существование драйвера
+//     var driverPath = Path.Combine(playwrightBrowsersPath, "node", "linux-arm64", "node");
+//     Console.WriteLine($"Looking for Playwright driver at: {driverPath}");
+//     
+//     if (!File.Exists(driverPath))
+//     {
+//         Console.WriteLine("Playwright driver not found, attempting installation...");
+//         
+//         // Создаем директорию, если не существует
+//         Directory.CreateDirectory(Path.Combine(playwrightBrowsersPath, "node", "linux-arm64"));
+//         
+//         // Запускаем установку через процесс
+//         var process = new System.Diagnostics.Process
+//         {
+//             StartInfo = new System.Diagnostics.ProcessStartInfo
+//             {
+//                 FileName = "dotnet",
+//                 Arguments = $"playwright install chromium --with-deps --path \"{playwrightBrowsersPath}\"",
+//                 RedirectStandardOutput = true,
+//                 RedirectStandardError = true,
+//                 UseShellExecute = false,
+//                 CreateNoWindow = true,
+//             }
+//         };
+//         
+//         process.Start();
+//         var output = await process.StandardOutput.ReadToEndAsync();
+//         var error = await process.StandardError.ReadToEndAsync();
+//         process.WaitForExit();
+//         
+//         Console.WriteLine($"Installation output: {output}");
+//         if (!string.IsNullOrEmpty(error))
+//             Console.WriteLine($"Installation errors: {error}");
+//         Console.WriteLine($"Playwright installation completed with exit code: {process.ExitCode}");
+//         
+//         // Проверяем снова
+//         if (File.Exists(driverPath))
+//         {
+//             Console.WriteLine($"Playwright driver successfully installed at: {driverPath}");
+//         }
+//         else
+//         {
+//             Console.WriteLine($"Playwright driver still not found at: {driverPath}");
+//             Console.WriteLine("Directory contents:");
+//             try
+//             {
+//                 var dir = Path.GetDirectoryName(driverPath);
+//                 if (Directory.Exists(dir))
+//                 {
+//                     foreach (var file in Directory.GetFiles(dir, "*", SearchOption.AllDirectories))
+//                     {
+//                         Console.WriteLine($"  - {file}");
+//                     }
+//                 }
+//             }
+//             catch { }
+//         }
+//     }
+//     else
+//     {
+//         Console.WriteLine($"Playwright driver found at: {driverPath}");
+//     }
+// }
+// catch (Exception ex)
+// {
+//     Console.WriteLine($"Warning: Could not initialize Playwright: {ex.Message}");
+// }
 builder.Configuration.AddEnvironmentVariables();
 builder.Services.AddAuthorization();
 builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
@@ -34,28 +120,12 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
         {
             ValidateIssuer = true,
             ValidIssuer = AuthOptions.ISSUER,
-            // будет ли валидироваться потребитель токена
             ValidateAudience = true,
-            // установка потребителя токена
             ValidAudience = AuthOptions.AUDIENCE,
-            // будет ли валидироваться время существования
             ValidateLifetime = true,
-            // установка ключа безопасности
             IssuerSigningKey = AuthOptions.GetSymmetricSecurityKey(),
-            // валидация ключа безопасности
             ValidateIssuerSigningKey = true,
         };
-        // options.Events = new JwtBearerEvents
-        // {
-        //     OnMessageReceived = context =>
-        //     {
-        //         if (context.Request.Cookies.ContainsKey("access_token"))
-        //         {
-        //             context.Token = context.Request.Cookies["access_token"];
-        //         }
-        //         return Task.CompletedTask;
-        //     }
-        // };
     });
 builder.Services.AddDbContext<AppDbContext>(options =>
     options.UseNpgsql(builder.Configuration.GetConnectionString("DefaultConnection")));
@@ -63,7 +133,6 @@ builder.Services.AddScoped<HtmlService>();
 builder.Services.AddScoped<StringParser>();
 builder.Services.AddControllers().AddJsonOptions(options =>
 {
-
     options.JsonSerializerOptions.PropertyNamingPolicy = null; 
     options.JsonSerializerOptions.WriteIndented = true;
 });
@@ -110,8 +179,6 @@ builder.Services.AddSwaggerGen(options =>
 
 });
 
-
-
 var app = builder.Build();
 app.UseCors("Mobile");
 using (var scope = app.Services.CreateScope())
@@ -120,8 +187,6 @@ using (var scope = app.Services.CreateScope())
     db.Database.Migrate();
 }
 var configuration = builder.Configuration;
-
-
 
 if (app.Environment.IsDevelopment())
 {
@@ -139,7 +204,6 @@ if (app.Environment.IsDevelopment())
         options.EnablePersistAuthorization();
         options.OAuth2RedirectUrl($"{configuration["Swagger:RedirectUrl"]}/swagger/oauth2-redirect.html");
     
-        // Добавьте для отладки
         options.ConfigObject.AdditionalItems.Add("requestInterceptor", "(req) => { console.log('Request:', req); return req; }");
 
         options.EnablePersistAuthorization();
@@ -148,9 +212,7 @@ if (app.Environment.IsDevelopment())
 }
 else
 {
-    // Configure the HTTP request pipeline.
     app.UseExceptionHandler("/Home/Error");
-    // The default HSTS value is 30 days. You may want to change this for production scenarios, see https://aka.ms/aspnetcore-hsts.
     app.UseHsts();
 }
 
@@ -160,14 +222,11 @@ app.UseRouting();
 app.UseAuthentication();
 app.UseAuthorization();
 
-
-
 app.MapStaticAssets();
 app.MapSwagger();
 app.MapControllerRoute(
         name: "default",
         pattern: "{controller=Home}/{action=Index}/{id?}")
     .WithStaticAssets();
-
 
 app.Run();

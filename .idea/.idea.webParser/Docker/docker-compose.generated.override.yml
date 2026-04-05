@@ -18,5 +18,5 @@ services:
     volumes:
     - "/Volumes/SSD/projects/GitHub/webParser/webParser:/app:rw"
     - "/Volumes/SSD/projects/GitHub/webParser:/src:rw"
-    - "/Users/nikitahmyrenkov/.nuget/packages:/home/app/.nuget/packages"
+    - "/Users/nikitahmyrenkov/.nuget/packages:/root/.nuget/packages"
     working_dir: "/app"

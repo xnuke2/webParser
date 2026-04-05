@@ -1,23 +1,60 @@
 ﻿FROM mcr.microsoft.com/dotnet/aspnet:9.0 AS base
-USER $APP_UID
 WORKDIR /app
 EXPOSE 8080
 EXPOSE 8081
 
+# Установка всех зависимостей, необходимых для Playwright (Chromium)
+RUN apt-get update && apt-get install -y \
+    wget \
+    gnupg \
+    libgbm1 \
+    libnss3 \
+    libatk1.0-0 \
+    libatk-bridge2.0-0 \
+    libcups2 \
+    libdrm2 \
+    libxkbcommon0 \
+    libxcomposite1 \
+    libxdamage1 \
+    libxfixes3 \
+    libxrandr2 \
+    libasound2 \
+    libpango-1.0-0 \
+    libcairo2 \
+    libx11-xcb1 \
+    libxcb1 \
+    libxshmfence1 \
+    libxrender1 \
+    libglib2.0-0 \
+    libexpat1 \
+    libfontconfig1 \
+    && rm -rf /var/lib/apt/lists/*
+
 FROM mcr.microsoft.com/dotnet/sdk:9.0 AS build
-ARG BUILD_CONFIGURATION=Development
 WORKDIR /src
-COPY ["webParser/webParser.csproj", "webParser/"]
-RUN dotnet restore "webParser/webParser.csproj"
+
+COPY ["webParser.csproj", "./"]
+RUN dotnet restore "webParser.csproj"
+
 COPY . .
-WORKDIR "/src/webParser"
-RUN dotnet build "./webParser.csproj" -c $BUILD_CONFIGURATION -o /app/build
+RUN dotnet build "webParser.csproj" -c Release -o /app/build
 
 FROM build AS publish
-ARG BUILD_CONFIGURATION=Development
-RUN dotnet publish "./webParser.csproj" -c $BUILD_CONFIGURATION -o /app/publish /p:UseAppHost=false
+RUN dotnet publish "webParser.csproj" -c Release -o /app/publish
 
 FROM base AS final
 WORKDIR /app
 COPY --from=publish /app/publish .
+
+# Путь, куда будут установлены браузеры Playwright (должен быть доступен на запись)
+ENV PLAYWRIGHT_BROWSERS_PATH=/app/.playwright
+ENV DOTNET_PLAYWRIGHT_PATH=/app/.playwright
+
+# Установка .NET инструмента Playwright CLI
+RUN dotnet tool install --global Microsoft.Playwright.CLI
+ENV PATH="${PATH}:/root/.dotnet/tools"
+
+# Установка браузера Chromium (без дополнительных зависимостей, они уже есть в образе)
+RUN playwright install chromium
+
 ENTRYPOINT ["dotnet", "webParser.dll"]
