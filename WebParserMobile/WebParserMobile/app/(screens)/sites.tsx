@@ -10,12 +10,14 @@ import {
     TouchableOpacity,
     View,
     RefreshControl,
-    Modal
+    Modal,
+    FlatList,
 } from "react-native";
 import { useSites } from '@/contexts/SitesContext';
 import { useAuth } from '@/contexts/AuthContext';
 import React, { useCallback, useEffect, useState, useMemo } from 'react';
 import { Feather, MaterialIcons, AntDesign } from '@expo/vector-icons';
+import { useRouter } from 'expo-router';
 
 interface Site {
     Id: number;
@@ -30,6 +32,12 @@ interface SiteField {
 
 type SortOption = 'name-asc' | 'name-desc' | 'id-asc' | 'id-desc';
 
+interface FilterCondition {
+    id: string;
+    fieldNameId: number | null;
+    value: string;
+}
+
 export default function Sites() {
     const [refreshing, setRefreshing] = useState(false);
     const [searchQuery, setSearchQuery] = useState('');
@@ -41,45 +49,18 @@ export default function Sites() {
     const [selectedUrl, setSelectedUrl] = useState('');
     const [isManagingFavorite, setIsManagingFavorite] = useState<number | null>(null);
     const [showOnlyFavorites, setShowOnlyFavorites] = useState(false);
+    const [showFilterModal, setShowFilterModal] = useState(false);
+    const [filterConditions, setFilterConditions] = useState<FilterCondition[]>([]);
+    const [pendingConditions, setPendingConditions] = useState<FilterCondition[]>([]);
+    const [showFieldPicker, setShowFieldPicker] = useState<string | null>(null);
 
     const { token } = useAuth();
+    const router = useRouter();
 
-    useEffect(() => {
-        // При монтировании компонента загружаем сайты
-        fetchSites();
-
-        // Если пользователь авторизован, загружаем избранные
-        const loadFavorites = async () => {
-            if (token) {
-                try {
-                    await fetchFavoriteSites();
-                } catch (error) {
-                    console.error('Error loading favorites on mount:', error);
-                }
-            }
-        };
-
-        loadFavorites();
-    }, []);
-
-    // Добавьте useEffect для отслеживания изменения токена
-    useEffect(() => {
-        // Когда токен меняется (пользователь вошел/вышел)
-        if (token) {
-            console.log('Пользователь авторизован, загружаем избранные');
-            // Загружаем избранные с небольшой задержкой
-            const timer = setTimeout(() => {
-                fetchFavoriteSites();
-            }, 500);
-            return () => clearTimeout(timer);
-        } else {
-            console.log('Пользователь не авторизован, очищаем избранные');
-            // Можно очистить избранные или оставить как есть
-        }
-    }, [token]);
     const {
         sites,
         favoriteSiteIds,
+        fieldNames,
         loading,
         error,
         fetchSites,
@@ -90,16 +71,37 @@ export default function Sites() {
         isFavorite
     } = useSites();
 
-    // Фильтрация сайтов (поиск + только избранные)
+    useEffect(() => {
+        fetchSites();
+        const loadFavorites = async () => {
+            if (token) {
+                try {
+                    await fetchFavoriteSites();
+                } catch (error) {
+                    console.error('Error loading favorites on mount:', error);
+                }
+            }
+        };
+        loadFavorites();
+    }, []);
+
+    useEffect(() => {
+        if (token) {
+            const timer = setTimeout(() => {
+                fetchFavoriteSites();
+            }, 500);
+            return () => clearTimeout(timer);
+        }
+    }, [token]);
+
+    // Фильтрация сайтов (поиск + только избранные + условия фильтрации)
     const filteredAndSortedSites = useMemo(() => {
         let filtered = [...sites];
 
-        // Фильтр: только избранные (если включен)
         if (showOnlyFavorites && token) {
             filtered = filtered.filter(site => isFavorite(site.Id));
         }
 
-        // Поиск
         if (searchQuery.trim()) {
             const query = searchQuery.toLowerCase();
             filtered = filtered.filter(site =>
@@ -108,7 +110,23 @@ export default function Sites() {
             );
         }
 
-        // Сортировка
+        // Фильтрация по условиям FieldName
+        if (filterConditions.length > 0) {
+            filtered = filtered.filter(site => {
+                const fields = siteFields[site.Id];
+                if (!fields) return false;
+                return filterConditions.every(condition => {
+                    if (!condition.fieldNameId) return true;
+                    const fieldName = fieldNames.find(f => f.Id === condition.fieldNameId);
+                    if (!fieldName) return true;
+                    const field = fields.find(f => f.Field.toLowerCase() === fieldName.Name.toLowerCase());
+                    if (!field) return false;
+                    if (!condition.value.trim()) return true;
+                    return field.Data.toLowerCase().includes(condition.value.toLowerCase());
+                });
+            });
+        }
+
         switch (sortBy) {
             case 'name-asc':
                 filtered.sort((a, b) => a.Name.localeCompare(b.Name));
@@ -125,11 +143,46 @@ export default function Sites() {
         }
 
         return filtered;
-    }, [sites, searchQuery, sortBy, showOnlyFavorites, token, isFavorite]);
+    }, [sites, searchQuery, sortBy, showOnlyFavorites, token, isFavorite, filterConditions, siteFields, fieldNames]);
 
-    useEffect(() => {
-        fetchSites();
-    }, []);
+    const activeFiltersCount = filterConditions.filter(c => c.fieldNameId !== null).length;
+
+    const openFilterModal = () => {
+        setPendingConditions(filterConditions.length > 0 ? [...filterConditions] : []);
+        setShowFilterModal(true);
+    };
+
+    const addCondition = () => {
+        setPendingConditions(prev => [...prev, {
+            id: Date.now().toString(),
+            fieldNameId: null,
+            value: ''
+        }]);
+    };
+
+    const removeCondition = (id: string) => {
+        setPendingConditions(prev => prev.filter(c => c.id !== id));
+    };
+
+    const updateConditionField = (id: string, fieldNameId: number | null) => {
+        setPendingConditions(prev => prev.map(c => c.id === id ? { ...c, fieldNameId } : c));
+        setShowFieldPicker(null);
+    };
+
+    const updateConditionValue = (id: string, value: string) => {
+        setPendingConditions(prev => prev.map(c => c.id === id ? { ...c, value } : c));
+    };
+
+    const applyFilters = () => {
+        setFilterConditions(pendingConditions.filter(c => c.fieldNameId !== null));
+        setShowFilterModal(false);
+    };
+
+    const resetFilters = () => {
+        setPendingConditions([]);
+        setFilterConditions([]);
+        setShowFilterModal(false);
+    };
 
     const extractDomainFromUrl = (url: string): string => {
         try {
@@ -343,11 +396,23 @@ export default function Sites() {
                     ) : null}
                 </View>
 
-                <TouchableOpacity style={styles.sortButton} onPress={handleSortChange}>
-                    <Feather name="filter" size={18} color="#4a6fa5" />
-                    <Text style={styles.sortButtonText}>{getSortLabel()}</Text>
-                    <Feather name="chevron-down" size={16} color="#4a6fa5" />
-                </TouchableOpacity>
+                <View style={styles.controlsRow}>
+                    <TouchableOpacity style={styles.sortButton} onPress={handleSortChange}>
+                        <Feather name="arrow-down" size={18} color="#4a6fa5" />
+                        <Text style={styles.sortButtonText}>{getSortLabel()}</Text>
+                        <Feather name="chevron-down" size={16} color="#4a6fa5" />
+                    </TouchableOpacity>
+
+                    <TouchableOpacity style={[styles.filterButton, activeFiltersCount > 0 && styles.filterButtonActive]} onPress={openFilterModal}>
+                        <Feather name="filter" size={18} color={activeFiltersCount > 0 ? '#fff' : '#4a6fa5'} />
+                        <Text style={[styles.filterButtonText, activeFiltersCount > 0 && styles.filterButtonTextActive]}>Фильтры</Text>
+                        {activeFiltersCount > 0 && (
+                            <View style={styles.filterBadge}>
+                                <Text style={styles.filterBadgeText}>{activeFiltersCount}</Text>
+                            </View>
+                        )}
+                    </TouchableOpacity>
+                </View>
             </View>
 
             {/* Список сайтов */}
@@ -525,6 +590,82 @@ export default function Sites() {
                 )}
             </ScrollView>
 
+            {/* Модальное окно фильтров */}
+            <Modal
+                animationType="slide"
+                transparent={true}
+                visible={showFilterModal}
+                onRequestClose={() => setShowFilterModal(false)}
+            >
+                <View style={styles.modalOverlay}>
+                    <View style={styles.filterModalContent}>
+                        <Text style={styles.modalTitle}>Фильтры</Text>
+
+                        <ScrollView style={styles.filterScroll} showsVerticalScrollIndicator={false}>
+                            {pendingConditions.map((condition) => (
+                                <View key={condition.id} style={styles.conditionRow}>
+                                    <TouchableOpacity
+                                        style={styles.fieldPickerButton}
+                                        onPress={() => setShowFieldPicker(showFieldPicker === condition.id ? null : condition.id)}
+                                    >
+                                        <Text style={[styles.fieldPickerText, !condition.fieldNameId && styles.fieldPickerPlaceholder]}>
+                                            {condition.fieldNameId
+                                                ? fieldNames.find(f => f.Id === condition.fieldNameId)?.Name ?? 'Параметр'
+                                                : 'Выберите параметр'}
+                                        </Text>
+                                        <Feather name="chevron-down" size={14} color="#95a5a6" />
+                                    </TouchableOpacity>
+
+                                    <TextInput
+                                        style={styles.conditionValueInput}
+                                        placeholder="Значение"
+                                        value={condition.value}
+                                        onChangeText={(v) => updateConditionValue(condition.id, v)}
+                                    />
+
+                                    <TouchableOpacity style={styles.removeConditionButton} onPress={() => removeCondition(condition.id)}>
+                                        <Feather name="x" size={18} color="#e74c3c" />
+                                    </TouchableOpacity>
+
+                                    {showFieldPicker === condition.id && (
+                                        <View style={styles.fieldDropdown}>
+                                            <FlatList
+                                                data={fieldNames}
+                                                keyExtractor={(item) => item.Id.toString()}
+                                                renderItem={({ item }) => (
+                                                    <TouchableOpacity
+                                                        style={[styles.fieldDropdownItem, condition.fieldNameId === item.Id && styles.fieldDropdownItemActive]}
+                                                        onPress={() => updateConditionField(condition.id, item.Id)}
+                                                    >
+                                                        <Text style={[styles.fieldDropdownText, condition.fieldNameId === item.Id && styles.fieldDropdownTextActive]}>
+                                                            {item.Name}
+                                                        </Text>
+                                                    </TouchableOpacity>
+                                                )}
+                                                style={{ maxHeight: 180 }}
+                                            />
+                                        </View>
+                                    )}
+                                </View>
+                            ))}
+
+                            <TouchableOpacity style={styles.addConditionButton} onPress={addCondition}>
+                                <Feather name="plus" size={18} color="#4a6fa5" />
+                                <Text style={styles.addConditionText}>Добавить условие</Text>
+                            </TouchableOpacity>
+                        </ScrollView>
+
+                        <TouchableOpacity style={styles.applyButton} onPress={applyFilters}>
+                            <Text style={styles.applyButtonText}>Применить фильтры</Text>
+                        </TouchableOpacity>
+
+                        <TouchableOpacity style={styles.resetButton} onPress={resetFilters}>
+                            <Text style={styles.resetButtonText}>Сбросить все фильтры</Text>
+                        </TouchableOpacity>
+                    </View>
+                </View>
+            </Modal>
+
             {/* Модальное окно для отображения полного URL */}
             <Modal
                 animationType="fade"
@@ -664,6 +805,7 @@ const styles = StyleSheet.create({
         padding: 0,
     },
     sortButton: {
+        flex: 1,
         flexDirection: 'row',
         alignItems: 'center',
         backgroundColor: 'white',
@@ -672,6 +814,7 @@ const styles = StyleSheet.create({
         paddingVertical: 12,
         borderWidth: 1,
         borderColor: '#e0e0e0',
+        marginRight: 8,
     },
     sortButtonText: {
         flex: 1,
@@ -891,6 +1034,170 @@ const styles = StyleSheet.create({
         color: 'white',
         fontSize: 16,
         fontWeight: '600',
+    },
+    controlsRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+    },
+    filterButton: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        backgroundColor: 'white',
+        borderRadius: 12,
+        paddingHorizontal: 16,
+        paddingVertical: 12,
+        borderWidth: 1,
+        borderColor: '#e0e0e0',
+    },
+    filterButtonActive: {
+        backgroundColor: '#4a6fa5',
+        borderColor: '#4a6fa5',
+    },
+    filterButtonText: {
+        marginLeft: 6,
+        fontSize: 14,
+        color: '#4a6fa5',
+        fontWeight: '500',
+    },
+    filterButtonTextActive: {
+        color: '#fff',
+    },
+    filterBadge: {
+        marginLeft: 6,
+        backgroundColor: '#fff',
+        borderRadius: 10,
+        width: 20,
+        height: 20,
+        justifyContent: 'center',
+        alignItems: 'center',
+    },
+    filterBadgeText: {
+        fontSize: 11,
+        fontWeight: 'bold',
+        color: '#4a6fa5',
+    },
+    filterModalContent: {
+        backgroundColor: 'white',
+        borderRadius: 20,
+        width: '100%',
+        maxWidth: 400,
+        maxHeight: '85%',
+        padding: 24,
+    },
+    filterScroll: {
+        marginBottom: 16,
+    },
+    conditionRow: {
+        marginBottom: 12,
+        position: 'relative',
+    },
+    fieldPickerButton: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        backgroundColor: '#f8f9fa',
+        borderRadius: 10,
+        paddingHorizontal: 14,
+        paddingVertical: 10,
+        borderWidth: 1,
+        borderColor: '#e0e0e0',
+        marginBottom: 8,
+    },
+    fieldPickerText: {
+        fontSize: 14,
+        color: '#2c3e50',
+    },
+    fieldPickerPlaceholder: {
+        color: '#95a5a6',
+    },
+    conditionValueInput: {
+        backgroundColor: '#f8f9fa',
+        borderRadius: 10,
+        paddingHorizontal: 14,
+        paddingVertical: 10,
+        borderWidth: 1,
+        borderColor: '#e0e0e0',
+        fontSize: 14,
+        color: '#2c3e50',
+        marginBottom: 8,
+    },
+    removeConditionButton: {
+        position: 'absolute',
+        top: 8,
+        right: 8,
+        padding: 4,
+    },
+    fieldDropdown: {
+        backgroundColor: 'white',
+        borderRadius: 10,
+        borderWidth: 1,
+        borderColor: '#e0e0e0',
+        marginBottom: 8,
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.1,
+        shadowRadius: 4,
+        elevation: 4,
+    },
+    fieldDropdownItem: {
+        paddingHorizontal: 14,
+        paddingVertical: 10,
+        borderBottomWidth: 1,
+        borderBottomColor: '#f0f0f0',
+    },
+    fieldDropdownItemActive: {
+        backgroundColor: '#e8f4fc',
+    },
+    fieldDropdownText: {
+        fontSize: 14,
+        color: '#2c3e50',
+    },
+    fieldDropdownTextActive: {
+        color: '#4a6fa5',
+        fontWeight: '600',
+    },
+    addConditionButton: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'center',
+        backgroundColor: '#f0f7ff',
+        borderRadius: 10,
+        paddingVertical: 12,
+        borderWidth: 1,
+        borderColor: '#4a6fa5',
+        borderStyle: 'dashed',
+        marginTop: 4,
+    },
+    addConditionText: {
+        marginLeft: 8,
+        fontSize: 14,
+        color: '#4a6fa5',
+        fontWeight: '500',
+    },
+    applyButton: {
+        backgroundColor: '#4a6fa5',
+        borderRadius: 12,
+        padding: 16,
+        alignItems: 'center',
+        marginBottom: 10,
+    },
+    applyButtonText: {
+        color: 'white',
+        fontSize: 16,
+        fontWeight: '600',
+    },
+    resetButton: {
+        backgroundColor: '#f8f9fa',
+        borderRadius: 12,
+        padding: 16,
+        alignItems: 'center',
+        borderWidth: 1,
+        borderColor: '#e0e0e0',
+    },
+    resetButtonText: {
+        color: '#e74c3c',
+        fontSize: 16,
+        fontWeight: '500',
     },
     domainContainer: {
         flexDirection: 'row',

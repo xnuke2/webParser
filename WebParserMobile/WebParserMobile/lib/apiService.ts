@@ -37,6 +37,19 @@ export interface FavoriteSite {
     UserId: number;
 }
 
+export interface FieldName {
+    Id: number;
+    Name: string;
+}
+
+export interface AnalyzedField {
+    Id: number;
+    Name: string;
+    FieldToGet: string;
+    AnalyzedSiteId: number;
+    FieldNameId: number | null;
+}
+
 export interface LoginResponse {
     AccessToken: string;
     RefreshToken: string;
@@ -350,6 +363,22 @@ class ApiService {
 
     async getSiteFields(id: number): Promise<SiteField[]> {
         const response = await fetch(`${API_URL}/api/Parser/${id}`);
+        if (!response.ok) {
+            throw new Error(`HTTP error! status: ${response.status}`);
+        }
+        return response.json();
+    }
+
+    async getFieldNames(): Promise<FieldName[]> {
+        const response = await fetch(`${API_URL}/api/FieldName/all`);
+        if (!response.ok) {
+            throw new Error(`HTTP error! status: ${response.status}`);
+        }
+        return response.json();
+    }
+
+    async getAnalyzedFields(siteId: number): Promise<AnalyzedField[]> {
+        const response = await fetch(`${API_URL}/api/AnalyzedField/site/${siteId}`);
         if (!response.ok) {
             throw new Error(`HTTP error! status: ${response.status}`);
         }

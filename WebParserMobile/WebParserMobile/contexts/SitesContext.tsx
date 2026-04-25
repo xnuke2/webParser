@@ -1,15 +1,17 @@
 
 import React, { createContext, useContext, useState, useCallback, useEffect } from 'react';
-import { apiService, Site, SiteField } from '../lib/apiService';
+import { apiService, Site, SiteField, FieldName } from '../lib/apiService';
 
 interface SitesContextType {
     sites: Site[];
     favoriteSiteIds: number[];
+    fieldNames: FieldName[];
     loading: boolean;
     error: string | null;
     fetchSites: () => Promise<void>;
     fetchSiteFields: (id: number) => Promise<SiteField[]>;
     fetchFavoriteSites: () => Promise<void>;
+    fetchFieldNames: () => Promise<void>;
     addToFavorites: (siteId: number) => Promise<void>;
     removeFromFavorites: (siteId: number) => Promise<void>;
     isFavorite: (siteId: number) => boolean;
@@ -28,6 +30,7 @@ export const useSites = () => {
 export const SitesProvider = ({ children }: { children: React.ReactNode }) => {
     const [sites, setSites] = useState<Site[]>([]);
     const [favoriteSiteIds, setFavoriteSiteIds] = useState<number[]>([]);
+    const [fieldNames, setFieldNames] = useState<FieldName[]>([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
 
@@ -54,6 +57,15 @@ export const SitesProvider = ({ children }: { children: React.ReactNode }) => {
             return [];
         }
     };
+
+    const fetchFieldNames = useCallback(async () => {
+        try {
+            const data = await apiService.getFieldNames();
+            setFieldNames(data);
+        } catch (error) {
+            console.error('Error fetching field names:', error);
+        }
+    }, []);
 
     const fetchFavoriteSites = async () => {
         try {
@@ -104,10 +116,9 @@ export const SitesProvider = ({ children }: { children: React.ReactNode }) => {
     };
 
     useEffect(() => {
-        // Загружаем сайты всегда
         fetchSites();
+        fetchFieldNames();
 
-        // Загружаем избранные только если есть токен
         const checkAndLoadFavorites = async () => {
             const { token } = await apiService.getStoredAuthData();
             if (token) {
@@ -122,11 +133,13 @@ export const SitesProvider = ({ children }: { children: React.ReactNode }) => {
         <SitesContext.Provider value={{
             sites,
             favoriteSiteIds,
+            fieldNames,
             loading,
             error,
             fetchSites,
             fetchSiteFields,
             fetchFavoriteSites,
+            fetchFieldNames,
             addToFavorites,
             removeFromFavorites,
             isFavorite
