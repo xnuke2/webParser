@@ -1,3 +1,4 @@
+
 import { SafeAreaView } from "react-native-safe-area-context";
 import {
     ActivityIndicator,
@@ -15,7 +16,6 @@ import { useSites } from '@/contexts/SitesContext';
 import { useAuth } from '@/contexts/AuthContext';
 import React, { useCallback, useEffect, useState, useMemo } from 'react';
 import { Feather, MaterialIcons, AntDesign } from '@expo/vector-icons';
-
 
 interface Site {
     Id: number;
@@ -40,8 +40,43 @@ export default function Sites() {
     const [showUrlModal, setShowUrlModal] = useState(false);
     const [selectedUrl, setSelectedUrl] = useState('');
     const [isManagingFavorite, setIsManagingFavorite] = useState<number | null>(null);
+    const [showOnlyFavorites, setShowOnlyFavorites] = useState(false);
 
     const { token } = useAuth();
+
+    useEffect(() => {
+        // При монтировании компонента загружаем сайты
+        fetchSites();
+
+        // Если пользователь авторизован, загружаем избранные
+        const loadFavorites = async () => {
+            if (token) {
+                try {
+                    await fetchFavoriteSites();
+                } catch (error) {
+                    console.error('Error loading favorites on mount:', error);
+                }
+            }
+        };
+
+        loadFavorites();
+    }, []);
+
+    // Добавьте useEffect для отслеживания изменения токена
+    useEffect(() => {
+        // Когда токен меняется (пользователь вошел/вышел)
+        if (token) {
+            console.log('Пользователь авторизован, загружаем избранные');
+            // Загружаем избранные с небольшой задержкой
+            const timer = setTimeout(() => {
+                fetchFavoriteSites();
+            }, 500);
+            return () => clearTimeout(timer);
+        } else {
+            console.log('Пользователь не авторизован, очищаем избранные');
+            // Можно очистить избранные или оставить как есть
+        }
+    }, [token]);
     const {
         sites,
         favoriteSiteIds,
@@ -55,9 +90,14 @@ export default function Sites() {
         isFavorite
     } = useSites();
 
-    // Фильтрация и сортировка сайтов
+    // Фильтрация сайтов (поиск + только избранные)
     const filteredAndSortedSites = useMemo(() => {
         let filtered = [...sites];
+
+        // Фильтр: только избранные (если включен)
+        if (showOnlyFavorites && token) {
+            filtered = filtered.filter(site => isFavorite(site.Id));
+        }
 
         // Поиск
         if (searchQuery.trim()) {
@@ -85,21 +125,45 @@ export default function Sites() {
         }
 
         return filtered;
-    }, [sites, searchQuery, sortBy]);
+    }, [sites, searchQuery, sortBy, showOnlyFavorites, token, isFavorite]);
 
     useEffect(() => {
         fetchSites();
     }, []);
 
+    const extractDomainFromUrl = (url: string): string => {
+        try {
+            let domain = url.replace(/^(https?:\/\/)?(www\.)?/, '');
+            const slashIndex = domain.indexOf('/');
+            if (slashIndex !== -1) {
+                domain = domain.substring(0, slashIndex);
+            }
+            const portIndex = domain.indexOf(':');
+            if (portIndex !== -1) {
+                domain = domain.substring(0, portIndex);
+            }
+            return domain || url;
+        } catch (error) {
+            console.error('Error extracting domain:', error);
+            return url;
+        }
+    };
+
     const onRefresh = useCallback(() => {
         setRefreshing(true);
-        Promise.all([fetchSites(), fetchFavoriteSites()])
-            .finally(() => setRefreshing(false));
-    }, [fetchSites, fetchFavoriteSites]);
+        const promises = [fetchSites()];
 
-    // Загрузка полей сайта
+        // Загружаем избранные только если пользователь авторизован
+        if (token) {
+            promises.push(fetchFavoriteSites());
+        }
+
+        Promise.all(promises)
+            .finally(() => setRefreshing(false));
+    }, [fetchSites, fetchFavoriteSites, token]);
+
     const loadSiteFields = async (siteId: number) => {
-        if (siteFields[siteId]) return; // Уже загружены
+        if (siteFields[siteId]) return;
 
         setLoadingFields(prev => ({ ...prev, [siteId]: true }));
         try {
@@ -112,7 +176,6 @@ export default function Sites() {
         }
     };
 
-    // Обработка раскрытия/скрытия карточки
     const handleCardPress = (site: Site) => {
         if (expandedCardId === site.Id) {
             setExpandedCardId(null);
@@ -122,7 +185,6 @@ export default function Sites() {
         }
     };
 
-    // Добавление в избранное
     const handleAddToFavorites = async (siteId: number) => {
         if (!token) {
             Alert.alert(
@@ -142,7 +204,6 @@ export default function Sites() {
         setIsManagingFavorite(siteId);
         try {
             await addToFavorites(siteId);
-            Alert.alert('Успех', 'Сайт добавлен в избранное');
         } catch (error: any) {
             Alert.alert('Ошибка', error.message || 'Не удалось добавить в избранное');
         } finally {
@@ -150,49 +211,36 @@ export default function Sites() {
         }
     };
 
-    // Удаление из избранного
     const handleRemoveFromFavorites = async (siteId: number) => {
         setIsManagingFavorite(siteId);
+
+        await new Promise(resolve => setTimeout(resolve, 100));
+
         try {
             await removeFromFavorites(siteId);
-            //Alert.alert('Успех', 'Сайт удален из избранного');
-            setRefreshing(true);
-            Promise.all([fetchSites(), fetchFavoriteSites()])
-                .finally(() => setRefreshing(false));
         } catch (error: any) {
             Alert.alert('Ошибка', error.message || 'Не удалось удалить из избранного');
+            if (token) {
+                fetchFavoriteSites();
+            }
         } finally {
             setIsManagingFavorite(null);
         }
     };
 
-    // Обработка нажатия на кнопку избранного
     const handleFavoritePress = (siteId: number) => {
         if (isFavorite(siteId)) {
-            Alert.alert(
-                'Удалить из избранного',
-                'Вы уверены, что хотите удалить этот сайт из избранного?',
-                [
-                    { text: 'Отмена', style: 'cancel' },
-                    {
-                        text: 'Удалить',
-                        style: 'destructive',
-                        onPress: () => handleRemoveFromFavorites(siteId)
-                    }
-                ]
-            );
+            handleRemoveFromFavorites(siteId);
         } else {
             handleAddToFavorites(siteId);
         }
     };
 
-    // Показать URL в модальном окне
     const handleShowUrl = (url: string) => {
         setSelectedUrl(url);
         setShowUrlModal(true);
     };
 
-    // Сортировка
     const handleSortChange = () => {
         const sortOptions: SortOption[] = ['name-asc', 'name-desc', 'id-asc', 'id-desc'];
         const currentIndex = sortOptions.indexOf(sortBy);
@@ -207,6 +255,11 @@ export default function Sites() {
             case 'id-asc': return 'По ID (↑)';
             case 'id-desc': return 'По ID (↓)';
         }
+    };
+
+    // НОВЫЙ: переключение режима "только избранные"
+    const toggleShowOnlyFavorites = () => {
+        setShowOnlyFavorites(prev => !prev);
     };
 
     if (loading) {
@@ -242,12 +295,28 @@ export default function Sites() {
                 <Text style={styles.title}>Сайты</Text>
                 <View style={styles.headerStats}>
                     <Text style={styles.subtitle}>
-                        {filteredAndSortedSites.length} из {sites.length} сайтов
+                        {showOnlyFavorites && token
+                            ? `${filteredAndSortedSites.length} избранных сайтов`
+                            : `${filteredAndSortedSites.length} из ${sites.length} сайтов`
+                        }
                     </Text>
                     {token && (
-                        <Text style={styles.favoritesCount}>
-                            <AntDesign name="star" size={14} color="#f39c12" /> {favoriteSiteIds.length}
-                        </Text>
+                        <TouchableOpacity
+                            style={[
+                                styles.favoritesToggle,
+                                showOnlyFavorites && styles.favoritesToggleActive
+                            ]}
+                            onPress={toggleShowOnlyFavorites}
+                        >
+
+
+                            <Text style={[
+                                styles.favoritesToggleText,
+                                showOnlyFavorites && styles.favoritesToggleTextActive
+                            ]}>
+                                {showOnlyFavorites ? 'Все сайты' : 'Только избранные'}
+                            </Text>
+                        </TouchableOpacity>
                     )}
                 </View>
             </View>
@@ -258,7 +327,11 @@ export default function Sites() {
                     <Feather name="search" size={20} color="#95a5a6" />
                     <TextInput
                         style={styles.searchInput}
-                        placeholder="Поиск по названию или URL..."
+                        placeholder={
+                            showOnlyFavorites && token
+                                ? "Поиск в избранном..."
+                                : "Поиск по названию или URL..."
+                        }
                         value={searchQuery}
                         onChangeText={setSearchQuery}
                         clearButtonMode="while-editing"
@@ -293,26 +366,42 @@ export default function Sites() {
                 {filteredAndSortedSites.length === 0 ? (
                     <View style={styles.emptyState}>
                         <Feather name="inbox" size={64} color="#bdc3c7" />
-                        <Text style={styles.emptyTitle}>Сайты не найдены</Text>
-                        <Text style={styles.emptyText}>
-                            {searchQuery
-                                ? 'Попробуйте изменить поисковый запрос'
-                                : 'Нет доступных сайтов для отображения'
+                        <Text style={styles.emptyTitle}>
+                            {showOnlyFavorites && token
+                                ? 'Нет избранных сайтов'
+                                : 'Сайты не найдены'
                             }
                         </Text>
+                        <Text style={styles.emptyText}>
+                            {showOnlyFavorites && token
+                                ? 'Добавляйте сайты в избранное, чтобы они появились здесь'
+                                : searchQuery
+                                    ? 'Попробуйте изменить поисковый запрос'
+                                    : 'Нет доступных сайтов для отображения'
+                            }
+                        </Text>
+                        {showOnlyFavorites && token && (
+                            <TouchableOpacity
+                                style={styles.browseButton}
+                                onPress={toggleShowOnlyFavorites}
+                            >
+                                <Text style={styles.browseButtonText}>Показать все сайты</Text>
+                            </TouchableOpacity>
+                        )}
                     </View>
                 ) : (
                     filteredAndSortedSites.map((site) => {
-                        const favorite = isFavorite(site.Id);
+                        const favorite = token ? isFavorite(site.Id) : false;
                         const isLoading = isManagingFavorite === site.Id;
+                        const domain = extractDomainFromUrl(site.Url);
 
                         return (
                             <TouchableOpacity
-                                key={site.Id}
+                                key={`site-${site.Id}-${favorite}-${expandedCardId === site.Id}`}
                                 style={[
                                     styles.card,
                                     expandedCardId === site.Id && styles.cardExpanded,
-                                    favorite && styles.cardFavorite
+                                    token && favorite && styles.cardFavorite
                                 ]}
                                 onPress={() => handleCardPress(site)}
                                 activeOpacity={0.7}
@@ -320,7 +409,11 @@ export default function Sites() {
                                 {/* Заголовок карточки */}
                                 <View style={styles.cardHeader}>
                                     <View style={styles.siteIcon}>
-                                        <Feather name="globe" size={20} color="#4a6fa5" />
+                                        {token && favorite ? (
+                                            <AntDesign name="star" size={18} color="#f39c12" />
+                                        ) : (
+                                            <Feather name="globe" size={18} color="#4a6fa5" />
+                                        )}
                                     </View>
                                     <View style={styles.cardHeaderContent}>
                                         <Text style={styles.siteName} numberOfLines={1}>
@@ -328,12 +421,12 @@ export default function Sites() {
                                         </Text>
                                         <View style={styles.siteInfoRow}>
                                             <Text style={styles.siteId}>ID: {site.Id}</Text>
-                                            {favorite && (
-                                                <View style={styles.favoriteBadge}>
-                                                    <AntDesign name="star" size={10} color="#fff" />
-                                                    <Text style={styles.favoriteBadgeText}>В избранном</Text>
-                                                </View>
-                                            )}
+                                            <View style={styles.domainContainer}>
+                                                <Feather name="link" size={10} color="#3498db" />
+                                                <Text style={styles.domainText} numberOfLines={1}>
+                                                    {domain}
+                                                </Text>
+                                            </View>
                                         </View>
                                     </View>
 
@@ -350,17 +443,19 @@ export default function Sites() {
                                             {isLoading ? (
                                                 <ActivityIndicator size="small" color={favorite ? "#f39c12" : "#bdc3c7"} />
                                             ) : (
-                                                favorite ?
-                                                <AntDesign
-                                                    name={"star"}
-                                                    size={20}
-                                                    color={favorite ? "#f39c12" : "#bdc3c7"}
-                                                />:
-                                                    <Feather
-                                                        name={"star"}
+                                                favorite ? (
+                                                    <AntDesign
+                                                        name="star"
                                                         size={20}
-                                                        color={favorite ? "#f39c12" : "#bdc3c7"}
+                                                        color="#f39c12"
                                                     />
+                                                ) : (
+                                                    <Feather
+                                                        name="star"
+                                                        size={20}
+                                                        color="#bdc3c7"
+                                                    />
+                                                )
                                             )}
                                         </TouchableOpacity>
                                     )}
@@ -422,35 +517,6 @@ export default function Sites() {
                                                 <Text style={styles.noDataText}>Нет данных с парсера</Text>
                                             )}
                                         </View>
-
-                                        {/* Кнопки действий для авторизованных пользователей */}
-                                        {token && (
-                                            <View style={styles.actionsSection}>
-                                                <TouchableOpacity
-                                                    style={[
-                                                        styles.actionButton,
-                                                        favorite ? styles.removeFavoriteButton : styles.addFavoriteButton
-                                                    ]}
-                                                    onPress={() => handleFavoritePress(site.Id)}
-                                                    disabled={isLoading}
-                                                >
-                                                    {isLoading ? (
-                                                        <ActivityIndicator size="small" color="white" />
-                                                    ) : (
-                                                        <>
-                                                            <AntDesign
-                                                                name={favorite ? "star" : "staro"}
-                                                                size={16}
-                                                                color="white"
-                                                            />
-                                                            <Text style={styles.actionButtonText}>
-                                                                {favorite ? 'Удалить из избранного' : 'Добавить в избранное'}
-                                                            </Text>
-                                                        </>
-                                                    )}
-                                                </TouchableOpacity>
-                                            </View>
-                                        )}
                                     </View>
                                 )}
                             </TouchableOpacity>
@@ -552,10 +618,28 @@ const styles = StyleSheet.create({
         fontSize: 14,
         color: '#7f8c8d',
     },
-    favoritesCount: {
-        fontSize: 14,
+    favoritesToggle: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        backgroundColor: '#f8f9fa',
+        paddingHorizontal: 12,
+        paddingVertical: 6,
+        borderRadius: 16,
+        borderWidth: 1,
+        borderColor: '#e0e0e0',
+    },
+    favoritesToggleActive: {
+        backgroundColor: '#fff8e1',
+        borderColor: '#f39c12',
+    },
+    favoritesToggleText: {
+        fontSize: 12,
+        color: '#95a5a6',
+        fontWeight: '500',
+        marginLeft: 4,
+    },
+    favoritesToggleTextActive: {
         color: '#f39c12',
-        fontWeight: '600',
     },
     controls: {
         paddingHorizontal: 20,
@@ -655,20 +739,6 @@ const styles = StyleSheet.create({
         fontSize: 12,
         color: '#95a5a6',
     },
-    favoriteBadge: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        backgroundColor: '#f39c12',
-        paddingHorizontal: 8,
-        paddingVertical: 3,
-        borderRadius: 10,
-    },
-    favoriteBadgeText: {
-        fontSize: 10,
-        color: '#fff',
-        fontWeight: '600',
-        marginLeft: 4,
-    },
     favoriteButton: {
         padding: 8,
         marginRight: 8,
@@ -747,31 +817,6 @@ const styles = StyleSheet.create({
         padding: 12,
         textAlign: 'center',
     },
-    actionsSection: {
-        marginTop: 16,
-        paddingTop: 16,
-        borderTopWidth: 1,
-        borderTopColor: '#f0f0f0',
-    },
-    actionButton: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        justifyContent: 'center',
-        padding: 12,
-        borderRadius: 8,
-        gap: 8,
-    },
-    addFavoriteButton: {
-        backgroundColor: '#4a6fa5',
-    },
-    removeFavoriteButton: {
-        backgroundColor: '#e74c3c',
-    },
-    actionButtonText: {
-        color: 'white',
-        fontSize: 14,
-        fontWeight: '600',
-    },
     emptyState: {
         alignItems: 'center',
         justifyContent: 'center',
@@ -789,6 +834,18 @@ const styles = StyleSheet.create({
         color: '#bdc3c7',
         textAlign: 'center',
         maxWidth: 300,
+    },
+    browseButton: {
+        backgroundColor: '#4a6fa5',
+        paddingHorizontal: 20,
+        paddingVertical: 10,
+        borderRadius: 8,
+        marginTop: 16,
+    },
+    browseButtonText: {
+        color: 'white',
+        fontSize: 14,
+        fontWeight: '600',
     },
     modalOverlay: {
         flex: 1,
@@ -834,5 +891,22 @@ const styles = StyleSheet.create({
         color: 'white',
         fontSize: 16,
         fontWeight: '600',
+    },
+    domainContainer: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        backgroundColor: '#e8f4fc',
+        paddingHorizontal: 8,
+        paddingVertical: 3,
+        borderRadius: 6,
+        marginLeft: 8,
+        maxWidth: '50%',
+    },
+    domainText: {
+        fontSize: 10,
+        color: '#3498db',
+        fontWeight: '500',
+        marginLeft: 4,
+        fontFamily: 'monospace',
     },
 });
