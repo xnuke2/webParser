@@ -7,6 +7,17 @@ namespace webParser.Service;
 public class StringParser
 {
     private readonly ILogger<StringParser> _logger;
+    private static readonly HashSet<string> InlineElements = new()
+    {
+        "a", "span", "strong", "em", "b", "i", "u", "sub", "sup", "mark", "small",
+        "abbr", "cite", "code", "dfn", "kbd", "samp", "var", "q", "time", "ins", "del"
+    };
+    private static readonly HashSet<string> BlockElements = new()
+    {
+        "address", "article", "aside", "blockquote", "canvas", "dd", "div", "dl", "dt", "fieldset", "figcaption",
+        "figure", "footer", "form", "h1", "h2", "h3", "h4", "h5", "h6", "header", "hgroup", "hr", "li", "main",
+        "nav", "noscript", "ol", "p", "pre", "section", "table", "tfoot", "thead", "tr", "ul"
+    };
 
     public StringParser(ILogger<StringParser> logger)
     {
@@ -47,7 +58,7 @@ public class StringParser
                 {
                     var node = doc.DocumentNode.SelectSingleNode(selector);
                     if (node != null)
-                        extracted = CleanText(node.InnerText);
+                        extracted = ExtractTextWithStructure(node);
                 }
                 
                 // 2. Поиск по data-ftid
@@ -70,7 +81,7 @@ public class StringParser
                     {
                         var node = doc.DocumentNode.SelectSingleNode(xpath);
                         if (node != null)
-                            extracted = CleanText(node.InnerText);
+                            extracted = ExtractTextWithStructure(node);
                     }
                 }
 
@@ -101,7 +112,7 @@ public class StringParser
         {
             var ftid = match.Groups[1].Value;
             var node = doc.DocumentNode.SelectSingleNode($"//*[@data-ftid='{ftid}']");
-            return node != null ? CleanText(node.InnerText) : null;
+            return node != null ? ExtractTextWithStructure(node) : null;
         }
         return null;
     }
@@ -113,14 +124,14 @@ public class StringParser
         {
             var className = selector.Substring(1);
             var node = doc.DocumentNode.SelectSingleNode($"//*[contains(@class, '{className}')]");
-            return node != null ? CleanText(node.InnerText) : null;
+            return node != null ? ExtractTextWithStructure(node) : null;
         }
         // #id
         if (selector.StartsWith('#'))
         {
             var id = selector.Substring(1);
             var node = doc.DocumentNode.SelectSingleNode($"//*[@id='{id}']");
-            return node != null ? CleanText(node.InnerText) : null;
+            return node != null ? ExtractTextWithStructure(node) : null;
         }
         // tag.class
         var tagClassMatch = Regex.Match(selector, @"^(\w+)\.([\w-]+)");
@@ -129,17 +140,36 @@ public class StringParser
             var tag = tagClassMatch.Groups[1].Value;
             var className = tagClassMatch.Groups[2].Value;
             var node = doc.DocumentNode.SelectSingleNode($"//{tag}[contains(@class, '{className}')]");
-            return node != null ? CleanText(node.InnerText) : null;
+            return node != null ? ExtractTextWithStructure(node) : null;
         }
+        
         // tag[attr='value']
-        var attrMatch = Regex.Match(selector, @"^(\w+)\[([\w-]+)=['""]([^'""]+)['""]\]");
+        // var attrMatch = Regex.Match(selector, @"^(\w+)\[([\w-]+)=['""]([^'""]+)['""]\]");
+        // if (attrMatch.Success)
+        // {
+        //     var tag = attrMatch.Groups[1].Value;
+        //     var attr = attrMatch.Groups[2].Value;
+        //     var value = attrMatch.Groups[3].Value;
+        //     var node = doc.DocumentNode.SelectSingleNode($"//{tag}[@{attr}='{value}']");
+        //     return node != null ? CleanText(node.InnerText) : null;
+        // }
+        
+        // tag[attr='value']
+        var attrMatch = Regex.Match(selector, @"^(\w+)?\[([\w-]+)=['""]([^'""]+)['""]\]");
         if (attrMatch.Success)
         {
-            var tag = attrMatch.Groups[1].Value;
+            var tag = attrMatch.Groups[1].Value; // Может быть пустой строкой
             var attr = attrMatch.Groups[2].Value;
             var value = attrMatch.Groups[3].Value;
-            var node = doc.DocumentNode.SelectSingleNode($"//{tag}[@{attr}='{value}']");
-            return node != null ? CleanText(node.InnerText) : null;
+
+            string xpathExpression;
+            if (string.IsNullOrEmpty(tag))
+                xpathExpression = $"//*[@{attr}='{value}']";
+            else
+                xpathExpression = $"//{tag}[@{attr}='{value}']";
+
+            var node = doc.DocumentNode.SelectSingleNode(xpathExpression);
+            return node != null ? ExtractTextWithStructure(node) : null;
         }
         return null;
     }
@@ -160,7 +190,7 @@ public class StringParser
                     {
                         var valueCell = row.SelectSingleNode(".//td[@data-ftid='value']");
                         if (valueCell != null)
-                            return CleanText(valueCell.InnerText);
+                            return ExtractTextWithStructure(valueCell);
                     }
                 }
             }
@@ -199,13 +229,177 @@ public class StringParser
         return $"//{tagName}[{string.Join(" and ", conditions)}]";
     }
 
-    private string CleanText(string text)
+    // private string CleanText(string text)
+    // {
+    //     if (string.IsNullOrEmpty(text))
+    //         return text;
+    //     text = text.Trim();
+    //     text = Regex.Replace(text, @"\s{2,}", " ");
+    //     text = System.Net.WebUtility.HtmlDecode(text);
+    //     return text;
+    // }
+    
+    // private string ExtractTextWithStructure(HtmlNode node)
+    // {
+    //     var sb = new System.Text.StringBuilder();
+    //
+    //     // Состояние: нужно ли добавить пробел перед следующим текстовым узлом?
+    //     bool needSpaceBeforeNextText = false;
+    //
+    //     void Traverse(HtmlNode n)
+    //     {
+    //         if (n.NodeType == HtmlNodeType.Text)
+    //         {
+    //             var text = n.InnerText.Trim();
+    //             if (!string.IsNullOrEmpty(text))
+    //             {
+    //                 // Если требуется пробел — добавляем его
+    //                 if (needSpaceBeforeNextText)
+    //                 {
+    //                     sb.Append(" ");
+    //                     needSpaceBeforeNextText = false; // сбросили флаг
+    //                 }
+    //                 sb.Append(text);
+    //             }
+    //             // После текстового узла: следующий inline-элемент НЕ требует пробела перед собой
+    //             // (мы уже добавили пробел при входе в текст)
+    //         }
+    //         else if (n.NodeType == HtmlNodeType.Element)
+    //         {
+    //             string tagName = n.Name.ToLowerInvariant();
+    //
+    //             // 1. Если это блочный элемент — добавляем \n до и после
+    //             if (BlockElements.Contains(tagName))
+    //             {
+    //                 if (sb.Length > 0 && !sb.ToString().EndsWith("\n"))
+    //                     sb.AppendLine(); // \n перед блоком
+    //             }
+    //
+    //             // 2. Обрабатываем дочерние узлы
+    //             foreach (var child in n.ChildNodes)
+    //             {
+    //                 // Перед каждым дочерним узлом: если текущий узел — inline, и следующий — текстовый,
+    //                 // то установим флаг `needSpaceBeforeNextText = true`
+    //                 // Но мы не знаем тип следующего узла заранее, поэтому делаем так:
+    //                 // → После выхода из inline-элемента ставим флаг
+    //                 Traverse(child);
+    //             }
+    //
+    //             // 3. После обработки всех дочерних узлов:
+    //             //    Если текущий элемент — inline, то следующий текстовый узел (на уровне родителя) должен начинаться с пробела.
+    //             if (InlineElements.Contains(tagName))
+    //             {
+    //                 needSpaceBeforeNextText = true;
+    //             }
+    //
+    //             // 4. После блочного элемента — тоже ставим перенос
+    //             if (BlockElements.Contains(tagName))
+    //             {
+    //                 sb.AppendLine(); // \n после блока
+    //             }
+    //         }
+    //         // Для других типов узлов (comment, document) — ничего не делаем
+    //     }
+    //
+    //     Traverse(node);
+    //
+    //     return sb.ToString().Trim();
+    // }
+
+    private string ExtractTextWithStructure(HtmlNode node)
     {
-        if (string.IsNullOrEmpty(text))
-            return text;
+        var sb = new System.Text.StringBuilder();
+        bool needSpaceBeforeNextOutput = false;
+        
+        void TraverseSimple(HtmlNode n)
+        {
+            if (n.NodeType == HtmlNodeType.Text)
+            {
+                var text = n.InnerText.Trim();
+                if (!string.IsNullOrEmpty(text))
+                {
+                    if (needSpaceBeforeNextOutput && sb.Length > 0 && !sb.ToString().EndsWith(" ") && !sb.ToString().EndsWith("\n"))
+                    {
+                        sb.Append(" ");
+                        needSpaceBeforeNextOutput = false;
+                    }
+                    sb.Append(text);
+                }
+            }
+            else if (n.NodeType == HtmlNodeType.Element)
+            {
+                string tagName = n.Name.ToLowerInvariant();
+
+                if (BlockElements.Contains(tagName))
+                {
+                    if (sb.Length > 0 && !sb.ToString().EndsWith("\n"))
+                        sb.AppendLine();
+                }
+
+                // Обработка дочерних узлов с учетом пробелов между ними
+                var childNodes = n.ChildNodes;
+                for (int i = 0; i < childNodes.Count; i++)
+                {
+                    var child = childNodes[i];
+
+                    // Пробел ставится *перед* inline-элементом или текстом
+                    var currentIsText = child.NodeType == HtmlNodeType.Text && !string.IsNullOrWhiteSpace(child.InnerText);
+                    var currentIsInline = child.NodeType == HtmlNodeType.Element && InlineElements.Contains(child.Name.ToLowerInvariant());
+
+                    if (i > 0 && (currentIsText || currentIsInline))
+                    {
+                        // Был ли предыдущий узел текстом или inline
+                        var prevSibling = childNodes[i - 1];
+                        var prevWasTextOrInline = (prevSibling.NodeType == HtmlNodeType.Text && !string.IsNullOrWhiteSpace(prevSibling.InnerText))
+                                               || (prevSibling.NodeType == HtmlNodeType.Element && InlineElements.Contains(prevSibling.Name.ToLowerInvariant()));
+
+                        if (prevWasTextOrInline)
+                        {
+                            if (sb.Length > 0 && !sb.ToString().EndsWith(" ") && !sb.ToString().EndsWith("\n"))
+                            {
+                                sb.Append(" ");
+                            }
+                        }
+                    }
+
+                    TraverseSimple(child);
+
+                    // После обработки inline-элемента, следующий текст/inline должен начинаться с пробела
+                    if (currentIsInline)
+                    {
+                        needSpaceBeforeNextOutput = true;
+                    }
+                    else if (currentIsText && !string.IsNullOrEmpty(child.InnerText.Trim()))
+                    {
+                        // После текстового узла, если он не пустой, следующий inline должен начинаться с пробела
+                        needSpaceBeforeNextOutput = true;
+                    }
+                    else
+                    {
+                        // Для блочных и других элементов, флаг сбрасывается
+                        needSpaceBeforeNextOutput = false;
+                    }
+                }
+
+                if (BlockElements.Contains(tagName))
+                {
+                    sb.AppendLine();
+                }
+            }
+        }
+
+
+        TraverseSimple(node);
+
+        return FixExtraSpaces(sb.ToString()).Trim();
+    }
+    
+    private string FixExtraSpaces(string text)
+    {
+        // Удаляем пробел перед запятой, точкой, восклицательным и вопросительным знаком
+        text = Regex.Replace(text, @"\s+([,.!?])", "$1");
+        // Удаляем двойные пробелы
         text = Regex.Replace(text, @"\s+", " ");
-        text = text.Trim();
-        text = System.Net.WebUtility.HtmlDecode(text);
-        return text;
+        return text.Trim();
     }
 }

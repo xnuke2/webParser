@@ -2,7 +2,7 @@ namespace webParser.Models.DTO;
 
 public class DataField
 {
-    public string Data;
-    public string Field;
+    public required string Data { get; set; }
+    public required string Field { get; set; }
     
 }

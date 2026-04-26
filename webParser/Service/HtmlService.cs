@@ -28,6 +28,13 @@ public sealed class HtmlService : IAsyncDisposable
         // Фоновая инициализация браузера (без ожидания)
         _ = InitializeBrowserAsync();
     }
+    
+    private async Task ApplyRateLimitDelay()
+    {
+        var delayMs = Random.Shared.Next(_options.RateLimitMinDelayMs, _options.RateLimitMaxDelayMs + 1);
+        _logger.LogDebug("Applying rate limit delay: {DelayMs} ms", delayMs);
+        await Task.Delay(delayMs);
+    }
 
     private async Task InitializeBrowserAsync()
     {
@@ -122,6 +129,8 @@ public sealed class HtmlService : IAsyncDisposable
     {
         url = CleanUrl(url);
         _logger.LogInformation("Fetching with Playwright: {Url}", url);
+        
+        await ApplyRateLimitDelay();
 
         try
         {
@@ -202,6 +211,8 @@ public sealed class HtmlService : IAsyncDisposable
     {
         url = CleanUrl(url);
         _logger.LogInformation("Fetching with HttpClient: {Url}", url);
+        
+        await ApplyRateLimitDelay();
 
         using var client = _httpClientFactory.CreateClient();
         client.Timeout = TimeSpan.FromSeconds(_options.HttpTimeoutSeconds);

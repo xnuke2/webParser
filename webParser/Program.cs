@@ -138,45 +138,69 @@ builder.Services.AddControllers().AddJsonOptions(options =>
 });
 builder.Services.AddHttpClient();
 builder.Services.AddEndpointsApiExplorer();
-builder.Services.AddSwaggerGen(options =>
+// builder.Services.AddSwaggerGen(options =>
+// {
+//     options.SwaggerDoc("v1", new OpenApiInfo
+//     {
+//         Version = "v1",
+//         Title = "WebParser API",
+//         Description = "An ASP.NET Core Web API for managing ToDo items",
+//         TermsOfService = new Uri("https://example.com/terms"),
+//         Contact = new OpenApiContact
+//         {
+//             Name = "Example Contact",
+//             Url = new Uri("https://example.com/contact")
+//         },
+//         License = new OpenApiLicense
+//         {
+//             Name = "Example License",
+//             Url = new Uri("https://example.com/license")
+//         }
+//         
+//     });
+//     options.AddSecurityDefinition("Bearer", new OpenApiSecurityScheme
+//     {
+//         Description = "JWT Authorization header using the Bearer scheme.\r\n\r\n" +
+//                       "Enter 'Bearer' [space] and then your token.\r\n\r\n" +
+//                       "Example: 'Bearer 12345abcdef'",
+//         Name = "Authorization",
+//         In = ParameterLocation.Header,
+//         Type = SecuritySchemeType.Http,
+//         BearerFormat = "JWT",
+//         Scheme = "Bearer" 
+//     });
+//     
+//     options.AddSecurityRequirement(document => 
+//     {
+//         var requirement = new OpenApiSecurityRequirement();
+//         requirement.Add(new OpenApiSecuritySchemeReference("Bearer"), new List<string>());
+//         return requirement;
+//     });
+//
+// });
+
+builder.Services.AddSwaggerGen(c =>
 {
-    options.SwaggerDoc("v1", new OpenApiInfo
+    c.SwaggerDoc("v1", new OpenApiInfo
     {
         Version = "v1",
         Title = "WebParser API",
-        Description = "An ASP.NET Core Web API for managing ToDo items",
-        TermsOfService = new Uri("https://example.com/terms"),
-        Contact = new OpenApiContact
-        {
-            Name = "Example Contact",
-            Url = new Uri("https://example.com/contact")
-        },
-        License = new OpenApiLicense
-        {
-            Name = "Example License",
-            Url = new Uri("https://example.com/license")
-        }
-        
-    });
-    options.AddSecurityDefinition("Bearer", new OpenApiSecurityScheme
-    {
-        Description = "JWT Authorization header using the Bearer scheme.\r\n\r\n" +
-                      "Enter 'Bearer' [space] and then your token.\r\n\r\n" +
-                      "Example: 'Bearer 12345abcdef'",
-        Name = "Authorization",
-        In = ParameterLocation.Header,
-        Type = SecuritySchemeType.Http,
-        BearerFormat = "JWT",
-        Scheme = "Bearer" 
-    });
-    
-    options.AddSecurityRequirement(document => 
-    {
-        var requirement = new OpenApiSecurityRequirement();
-        requirement.Add(new OpenApiSecuritySchemeReference("Bearer"), new List<string>());
-        return requirement;
+        Description = "Web Parser API"
     });
 
+    // Security Definition
+    c.AddSecurityDefinition("Bearer", new OpenApiSecurityScheme
+    {
+        Name = "Authorization",
+        Type = SecuritySchemeType.Http,
+        Scheme = "Bearer",
+        BearerFormat = "JWT",
+        In = ParameterLocation.Header,
+        Description = "Enter JWT token"
+    });
+
+    // Security Requirement
+    c.AddSecurityRequirement(document => new() { [new OpenApiSecuritySchemeReference("Bearer", document)] = [] });
 });
 
 var app = builder.Build();

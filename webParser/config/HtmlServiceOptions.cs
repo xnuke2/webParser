@@ -9,4 +9,7 @@ public class HtmlServiceOptions
     public int MinHtmlLengthForHttp { get; set; } = 3000;
     public string[] JsHeavySites { get; set; } = { "auto.ru", "drom.ru", "avito.ru", "sberauto.com","auto.drom.ru" };
     public bool ForcePlaywrightForJsSites { get; set; } = true;
+    
+    public int RateLimitMinDelayMs { get; set; } = 5000;
+    public int RateLimitMaxDelayMs { get; set; } = 8000;
 }
