@@ -14,6 +14,7 @@ public class AppDbContext : DbContext
     public DbSet<FavoriteSite> FavoriteSites => Set<FavoriteSite>();
     
     public DbSet<AnalyzedField> AnalyzedFields => Set<AnalyzedField>();
+    public DbSet<FieldName> FieldNames => Set<FieldName>();
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         modelBuilder.Entity<User>(entity =>
@@ -45,16 +46,28 @@ public class AppDbContext : DbContext
                 .OnDelete(DeleteBehavior.Restrict);
         });
         
+        modelBuilder.Entity<FieldName>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.Name).IsRequired().HasMaxLength(40);
+        });
+
         modelBuilder.Entity<AnalyzedField>(entity =>
         {
             entity.HasKey(e => e.Id);
             entity.Property(e => e.Name).IsRequired();
             entity.Property(e => e.FieldToGet).IsRequired();
-            
+
             entity.HasOne<AnalyzedSite>()
                 .WithMany()
                 .HasForeignKey(a => a.AnalyzedSiteId)
                 .OnDelete(DeleteBehavior.Cascade);
+
+            entity.HasOne<FieldName>()
+                .WithMany()
+                .HasForeignKey(a => a.FieldNameId)
+                .OnDelete(DeleteBehavior.SetNull)
+                .IsRequired(false);
         });
 
 

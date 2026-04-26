@@ -1,31 +1,17 @@
-import React, { createContext, useContext, useState, useCallback } from 'react';
-import * as SecureStore from 'expo-secure-store';
-import { Platform } from 'react-native';
 
-interface Site {
-    Id: number;
-    Url: string;
-    Name: string;
-}
-
-interface SiteField {
-    Field: string;
-    Data: string;
-}
-
-interface FavoriteSite {
-    AnalyzedSiteId: number;
-    UserId: number;
-}
+import React, { createContext, useContext, useState, useCallback, useEffect } from 'react';
+import { apiService, Site, SiteField, FieldName } from '../lib/apiService';
 
 interface SitesContextType {
     sites: Site[];
-    favoriteSiteIds: number[]; // Массив ID избранных сайтов
+    favoriteSiteIds: number[];
+    fieldNames: FieldName[];
     loading: boolean;
     error: string | null;
     fetchSites: () => Promise<void>;
     fetchSiteFields: (id: number) => Promise<SiteField[]>;
     fetchFavoriteSites: () => Promise<void>;
+    fetchFieldNames: () => Promise<void>;
     addToFavorites: (siteId: number) => Promise<void>;
     removeFromFavorites: (siteId: number) => Promise<void>;
     isFavorite: (siteId: number) => boolean;
@@ -41,39 +27,19 @@ export const useSites = () => {
     return context;
 };
 
-const API_URL = Platform.select({
-    ios: 'http://localhost:8088',
-    android: 'http://192.168.31.177:8088',
-    web: 'http://localhost:8088',
-});
-
 export const SitesProvider = ({ children }: { children: React.ReactNode }) => {
     const [sites, setSites] = useState<Site[]>([]);
     const [favoriteSiteIds, setFavoriteSiteIds] = useState<number[]>([]);
+    const [fieldNames, setFieldNames] = useState<FieldName[]>([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
-
-    const getToken = async (): Promise<string | null> => {
-        try {
-            return await SecureStore.getItemAsync('userToken');
-        } catch (error) {
-            console.error('Error getting token:', error);
-            return null;
-        }
-    };
 
     const fetchSites = useCallback(async () => {
         setLoading(true);
         setError(null);
 
         try {
-            const response = await fetch(`${API_URL}/api/AnalyzedSite/all`);
-
-            if (!response.ok) {
-                throw new Error(`HTTP error! status: ${response.status}`);
-            }
-
-            const data = await response.json();
+            const data = await apiService.getAllSites();
             setSites(data);
         } catch (err: any) {
             setError(err.message || 'Ошибка при загрузке данных');
@@ -85,42 +51,34 @@ export const SitesProvider = ({ children }: { children: React.ReactNode }) => {
 
     const fetchSiteFields = async (id: number): Promise<SiteField[]> => {
         try {
-            const response = await fetch(`${API_URL}/api/Parser/${id}`);
-
-            if (!response.ok) {
-                throw new Error(`HTTP error! status: ${response.status}`);
-            }
-
-            const data = await response.json();
-            return data;
+            return await apiService.getSiteFields(id);
         } catch (error) {
             console.error('Error fetching site fields:', error);
             return [];
         }
     };
 
-    const fetchFavoriteSites = async () => {
-        const token = await getToken();
-        if (!token) {
-            setFavoriteSiteIds([]);
-            return;
-        }
-
+    const fetchFieldNames = useCallback(async () => {
         try {
-            const response = await fetch(`${API_URL}/api/FaforiteSite/my`, {
-                headers: {
-                    'Authorization': `Bearer ${token}`,
-                },
-            });
+            const data = await apiService.getFieldNames();
+            setFieldNames(data);
+        } catch (error) {
+            console.error('Error fetching field names:', error);
+        }
+    }, []);
 
-            if (response.ok) {
-                const data: FavoriteSite[] = await response.json();
-                const favoriteIds = data.map(fav => fav.AnalyzedSiteId);
-                setFavoriteSiteIds(favoriteIds);
-            } else {
-                console.error('Error fetching favorites:', response.status);
+    const fetchFavoriteSites = async () => {
+        try {
+            // Проверяем, есть ли токен перед запросом
+            const { token } = await apiService.getStoredAuthData();
+            if (!token) {
                 setFavoriteSiteIds([]);
+                return;
             }
+
+            const data = await apiService.getFavoriteSites();
+            const favoriteIds = data.map(fav => fav.AnalyzedSiteId);
+            setFavoriteSiteIds(favoriteIds);
         } catch (error) {
             console.error('Error fetching favorites:', error);
             setFavoriteSiteIds([]);
@@ -128,80 +86,27 @@ export const SitesProvider = ({ children }: { children: React.ReactNode }) => {
     };
 
     const addToFavorites = async (siteId: number): Promise<void> => {
-        const token = await getToken();
-        if (!token) {
-            throw new Error('Требуется авторизация');
-        }
-
-        const response = await fetch(`${API_URL}/api/FaforiteSite`, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'Authorization': `Bearer ${token}`,
-            },
-            body: JSON.stringify({ AnalyzedSiteId: siteId })
-        });
-
-        if (!response.ok) {
-            const errorData = await response.json();
-            throw new Error(errorData.message || `Ошибка при добавлении в избранное: ${response.status}`);
-        }
-
-        // Обновляем список избранных
+        await apiService.addFavoriteSite(siteId);
         setFavoriteSiteIds(prev => [...prev, siteId]);
     };
 
     const removeFromFavorites = async (siteId: number): Promise<void> => {
-        const token = await getToken();
-        if (!token) {
-            throw new Error('Требуется авторизация');
-        }
+        // Оптимистичное обновление UI
+        setFavoriteSiteIds(prev => {
+            const newIds = prev.filter(id => id !== siteId);
+            return newIds;
+        });
 
         try {
-            const response = await fetch(`${API_URL}/api/FaforiteSite/${siteId}`, {
-                method: 'DELETE',
-                headers: {
-                    'Authorization': `Bearer ${token}`,
-                    'Accept': 'application/json', // Явно указываем, что ожидаем JSON
-                }
-            });
-
-            // Проверяем статус ответа
-            if (response.status === 204 || response.status === 200) {
-                // Для статусов 204 (No Content) или 200 с пустым телом
-                // Обновляем список избранных
-                setFavoriteSiteIds(prev => prev.filter(id => id !== siteId));
-                return;
-            }
-
-            // Если сервер вернул ошибку, пробуем получить текст ошибки
-            let errorMessage = `Ошибка при удалении из избранного: ${response.status}`;
-
-            try {
-                // Пробуем получить текст ответа
-                const responseText = await response.text();
-
-                // Если есть текст и он не пустой, пытаемся разобрать как JSON
-                if (responseText && responseText.trim()) {
-                    try {
-                        const errorData = JSON.parse(responseText);
-                        errorMessage = errorData.message || errorMessage;
-                    } catch {
-                        // Если не JSON, используем текст как есть
-                        errorMessage = responseText;
-                    }
-                }
-            } catch (textError) {
-                console.error('Error reading response text:', textError);
-            }
-
-            throw new Error(errorMessage);
-
+            await apiService.removeFavoriteSite(siteId);
         } catch (error: any) {
-            if (error instanceof SyntaxError) {
-                // Это ошибка парсинга JSON - сервер вернул не JSON
-                throw new Error('Сервер вернул некорректный ответ. Возможно, пустое тело запроса.');
-            }
+            // Откатываем оптимистичное обновление при ошибке
+            setFavoriteSiteIds(prev => {
+                if (!prev.includes(siteId)) {
+                    return [...prev, siteId];
+                }
+                return prev;
+            });
             throw error;
         }
     };
@@ -210,20 +115,31 @@ export const SitesProvider = ({ children }: { children: React.ReactNode }) => {
         return favoriteSiteIds.includes(siteId);
     };
 
-    React.useEffect(() => {
+    useEffect(() => {
         fetchSites();
-        fetchFavoriteSites();
+        fetchFieldNames();
+
+        const checkAndLoadFavorites = async () => {
+            const { token } = await apiService.getStoredAuthData();
+            if (token) {
+                fetchFavoriteSites();
+            }
+        };
+
+        checkAndLoadFavorites();
     }, []);
 
     return (
         <SitesContext.Provider value={{
             sites,
             favoriteSiteIds,
+            fieldNames,
             loading,
             error,
             fetchSites,
             fetchSiteFields,
             fetchFavoriteSites,
+            fetchFieldNames,
             addToFavorites,
             removeFromFavorites,
             isFavorite

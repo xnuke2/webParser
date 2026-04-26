@@ -1,3 +1,4 @@
+// app/_layout.tsx
 import { Stack } from "expo-router";
 import { DarkTheme, DefaultTheme, ThemeProvider } from "@react-navigation/native";
 import { StatusBar } from "expo-status-bar";
@@ -12,11 +13,11 @@ export default function RootLayout() {
         <AuthProvider>
             <SitesProvider>
                 <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
-                    <Stack>
-                        <Stack.Screen name="(screens)" options={{ headerShown: false }} />
-                        <Stack.Screen name="(auth)" options={{ headerShown: false }} />
+                    <Stack screenOptions={{ headerShown: false }}>
+                        <Stack.Screen name="(screens)" />
+                        <Stack.Screen name="(auth)" />
                     </Stack>
-                    <StatusBar style="auto" />
+                    <StatusBar style={colorScheme === 'dark' ? 'light' : 'dark'} />
                 </ThemeProvider>
             </SitesProvider>
         </AuthProvider>

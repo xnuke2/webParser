@@ -1,19 +1,51 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import {
     View,
     Text,
     StyleSheet,
     TouchableOpacity,
     ScrollView,
-    Alert
+    Alert,
+    ActivityIndicator,
+    RefreshControl
 } from 'react-native';
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useAuth } from '@/contexts/AuthContext';
 import { StatusBar } from 'expo-status-bar';
 import { router } from 'expo-router';
+import { Feather } from '@expo/vector-icons';
 
 export default function ProfileScreen() {
-    const { token, signOut, userData } = useAuth();
+    const { token, signOut, userData, fetchUserInfo, isUserInfoLoading, isLoading } = useAuth();
+    const [refreshing, setRefreshing] = useState(false);
+    const [lastUpdated, setLastUpdated] = useState<string>('');
+    const [infoLoaded, setInfoLoaded] = useState(false);
+
+    // Загружаем информацию о пользователе при монтировании компонента
+    useEffect(() => {
+        if (token && !infoLoaded) {
+            const timer = setTimeout(() => {
+                loadUserInfo();
+                setInfoLoaded(true);
+            }, 500);
+            return () => clearTimeout(timer);
+        }
+    }, [token, infoLoaded]);
+
+    const loadUserInfo = async () => {
+        try {
+            await fetchUserInfo();
+            setLastUpdated(new Date().toLocaleTimeString());
+        } catch (error) {
+            console.error('Error loading user info:', error);
+        }
+    };
+
+    const onRefresh = async () => {
+        setRefreshing(true);
+        await loadUserInfo();
+        setRefreshing(false);
+    };
 
     const handleLogin = () => {
         router.push('/(auth)/login');
@@ -32,120 +64,308 @@ export default function ProfileScreen() {
                 {
                     text: 'Выйти',
                     style: 'destructive',
-                    onPress: signOut
+                    onPress: () => {
+                        signOut();
+                        setLastUpdated('');
+                        setInfoLoaded(false);
+                    }
                 }
             ]
         );
     };
 
+    const handleGoToSites = () => {
+        router.push('/(screens)/sites');
+    };
+
+    const handleGoToHome = () => {
+        router.push('/(screens)');
+    };
+
+    const getRoleIcon = () => {
+        if (!userData?.role) return 'user';
+        return userData.role === 'admin' ? 'shield' : 'user-check';
+    };
+
+    const getRoleColor = () => {
+        if (!userData?.role) return '#4a6fa5';
+        return userData.role === 'admin' ? '#e74c3c' : '#27ae60';
+    };
+
+    const getRoleDescription = () => {
+        if (!userData?.role) return 'Пользователь';
+        return userData.role === 'admin' ? 'Администратор' : 'Обычный пользователь';
+    };
+
+    if (isLoading) {
+        return (
+            <SafeAreaView style={styles.container}>
+                <View style={styles.loadingContainer}>
+                    <ActivityIndicator size="large" color="#4a6fa5" />
+                    <Text style={styles.loadingText}>Загрузка профиля...</Text>
+                </View>
+            </SafeAreaView>
+        );
+    }
+
     return (
         <SafeAreaView style={styles.container}>
             <StatusBar barStyle="light-content" />
 
-            <ScrollView contentContainerStyle={styles.content}>
+            <ScrollView
+                contentContainerStyle={styles.content}
+                refreshControl={
+                    token ? (
+                        <RefreshControl
+                            refreshing={refreshing}
+                            onRefresh={onRefresh}
+                            colors={['#4a6fa5']}
+                            tintColor="#4a6fa5"
+                        />
+                    ) : undefined
+                }
+            >
+                {/* Шапка профиля */}
                 <View style={styles.header}>
+                    <TouchableOpacity
+                        style={styles.backButton}
+                        onPress={handleGoToHome}
+                    >
+                        <Feather name="arrow-left" size={24} color="#4a6fa5" />
+                    </TouchableOpacity>
                     <Text style={styles.title}>Профиль</Text>
+                    <View style={styles.headerPlaceholder} />
                 </View>
 
+                {/* Основная карточка профиля */}
                 <View style={styles.profileCard}>
                     {token ? (
                         // Авторизованный пользователь
                         <>
-                            <View style={styles.avatar}>
-                                <Text style={styles.avatarText}>
-                                    {userData?.login?.charAt(0)?.toUpperCase() || 'U'}
-                                </Text>
+                            <View style={styles.avatarSection}>
+                                <View style={[styles.avatar, { backgroundColor: getRoleColor() }]}>
+                                    <Text style={styles.avatarText}>
+                                        {userData?.login?.charAt(0)?.toUpperCase() || 'U'}
+                                    </Text>
+                                    {userData?.role === 'admin' && (
+                                        <View style={styles.adminBadge}>
+                                            <Feather name="shield" size={12} color="white" />
+                                        </View>
+                                    )}
+                                </View>
+
+                                <View style={styles.userInfoHeader}>
+                                    <Text style={styles.userName}>
+                                        {userData?.login || 'Пользователь'}
+                                    </Text>
+                                    <View style={styles.roleContainer}>
+                                        <Feather
+                                            name={getRoleIcon()}
+                                            size={14}
+                                            color={getRoleColor()}
+                                        />
+                                        <Text style={[styles.userRole, { color: getRoleColor() }]}>
+                                            {getRoleDescription()}
+                                        </Text>
+                                    </View>
+                                </View>
                             </View>
 
-                            <Text style={styles.userName}>
-                                {userData?.login || 'Пользователь'}
-                            </Text>
-
-                            <Text style={styles.userEmail}>
-                                {userData?.email || 'Нет email'}
-                            </Text>
-
+                            {/* Информационная секция */}
                             <View style={styles.infoSection}>
-                                <Text style={styles.sectionTitle}>Информация</Text>
-                                <View style={styles.infoRow}>
-                                    <Text style={styles.infoLabel}>Статус:</Text>
-                                    <Text style={styles.infoValue}>Авторизован</Text>
+                                <View style={styles.sectionHeader}>
+                                    <Feather name="info" size={20} color="#4a6fa5" />
+                                    <Text style={styles.sectionTitle}>Информация</Text>
+                                    <TouchableOpacity
+                                        onPress={loadUserInfo}
+                                        disabled={isUserInfoLoading}
+                                        style={styles.refreshInfoButton}
+                                    >
+                                        <Feather
+                                            name="refresh-cw"
+                                            size={16}
+                                            color={isUserInfoLoading ? "#bdc3c7" : "#4a6fa5"}
+                                        />
+                                    </TouchableOpacity>
                                 </View>
-                                {userData?.role && (
-                                    <View style={styles.infoRow}>
-                                        <Text style={styles.infoLabel}>Роль:</Text>
-                                        <Text style={styles.infoValue}>{userData.role}</Text>
+
+                                <View style={styles.infoGrid}>
+                                    <View style={styles.infoItem}>
+                                        <View style={styles.infoIcon}>
+                                            <Feather name="user" size={16} color="#4a6fa5" />
+                                        </View>
+                                        <View style={styles.infoContent}>
+                                            <Text style={styles.infoLabel}>Логин</Text>
+                                            <Text style={styles.infoValue} numberOfLines={1}>
+                                                {userData?.login || 'Не указан'}
+                                            </Text>
+                                        </View>
+                                    </View>
+
+                                    <View style={styles.infoItem}>
+                                        <View style={styles.infoIcon}>
+                                            <Feather name={getRoleIcon()} size={16} color={getRoleColor()} />
+                                        </View>
+                                        <View style={styles.infoContent}>
+                                            <Text style={styles.infoLabel}>Роль</Text>
+                                            <View style={[
+                                                styles.roleBadge,
+                                                { backgroundColor: `${getRoleColor()}15` }
+                                            ]}>
+                                                <Text style={[styles.roleBadgeText, { color: getRoleColor() }]}>
+                                                    {userData?.role || 'user'}
+                                                </Text>
+                                            </View>
+                                        </View>
+                                    </View>
+
+                                    <View style={styles.infoItem}>
+                                        <View style={styles.infoIcon}>
+                                            <Feather name="clock" size={16} color="#9b59b6" />
+                                        </View>
+                                        <View style={styles.infoContent}>
+                                            <Text style={styles.infoLabel}>Статус</Text>
+                                            <Text style={styles.infoValue}>Авторизован</Text>
+                                        </View>
+                                    </View>
+
+                                    {lastUpdated && (
+                                        <View style={styles.infoItem}>
+                                            <View style={styles.infoIcon}>
+                                                <Feather name="refresh-cw" size={16} color="#2ecc71" />
+                                            </View>
+                                            <View style={styles.infoContent}>
+                                                <Text style={styles.infoLabel}>Обновлено</Text>
+                                                <Text style={styles.infoValue}>{lastUpdated}</Text>
+                                            </View>
+                                        </View>
+                                    )}
+                                </View>
+
+                                {isUserInfoLoading && (
+                                    <View style={styles.loadingInfo}>
+                                        <ActivityIndicator size="small" color="#4a6fa5" />
+                                        <Text style={styles.loadingInfoText}>Обновление информации...</Text>
                                     </View>
                                 )}
                             </View>
 
-                            <TouchableOpacity
-                                style={[styles.button, styles.logoutButton]}
-                                onPress={handleLogout}
-                            >
-                                <Text style={styles.logoutButtonText}>Выйти</Text>
-                            </TouchableOpacity>
+                            {/* Кнопки действий */}
+                            <View style={styles.actionButtons}>
+                                <TouchableOpacity
+                                    style={[styles.button, styles.sitesButton]}
+                                    onPress={handleGoToSites}
+                                >
+                                    <Feather name="globe" size={18} color="white" />
+                                    <Text style={styles.sitesButtonText}>Перейти к сайтам</Text>
+                                </TouchableOpacity>
+
+                                <TouchableOpacity
+                                    style={[styles.button, styles.logoutButton]}
+                                    onPress={handleLogout}
+                                >
+                                    <Feather name="log-out" size={18} color="white" />
+                                    <Text style={styles.logoutButtonText}>Выйти</Text>
+                                </TouchableOpacity>
+                            </View>
                         </>
                     ) : (
                         // Неавторизованный пользователь
                         <>
-                            <View style={styles.avatar}>
-                                <Text style={styles.avatarText}>👤</Text>
+                            <View style={styles.guestAvatar}>
+                                <Feather name="user" size={60} color="#bdc3c7" />
                             </View>
 
-                            <Text style={styles.userName}>Гость</Text>
-                            <Text style={styles.userEmail}>Вы не авторизованы</Text>
+                            <Text style={styles.guestTitle}>Гость</Text>
+                            <Text style={styles.guestSubtitle}>Вы не авторизованы</Text>
 
-                            <View style={styles.infoSection}>
-                                <Text style={styles.guestText}>
-                                    Авторизуйтесь, чтобы получить доступ ко всем функциям:
-                                </Text>
-                                <View style={styles.featureList}>
-                                    <Text style={styles.featureItem}>• Добавление сайтов в избранное</Text>
-                                    {/*<Text style={styles.featureItem}>• Сохранение настроек</Text>*/}
-                                    {/*<Text style={styles.featureItem}>• История действий</Text>*/}
+                            <View style={styles.guestInfo}>
+                                <View style={styles.featureSection}>
+                                    <View style={styles.sectionHeader}>
+                                        <Feather name="star" size={20} color="#f39c12" />
+                                        <Text style={styles.sectionTitle}>Преимущества</Text>
+                                    </View>
+
+                                    <View style={styles.featureList}>
+                                        <View style={styles.featureItem}>
+                                            <Feather name="check-circle" size={16} color="#27ae60" />
+                                            <Text style={styles.featureText}>Добавление сайтов в избранное</Text>
+                                        </View>
+                                        <View style={styles.featureItem}>
+                                            <Feather name="check-circle" size={16} color="#27ae60" />
+                                            <Text style={styles.featureText}>Персональные настройки</Text>
+                                        </View>
+                                        <View style={styles.featureItem}>
+                                            <Feather name="check-circle" size={16} color="#27ae60" />
+                                            <Text style={styles.featureText}>История действий</Text>
+                                        </View>
+                                        <View style={styles.featureItem}>
+                                            <Feather name="check-circle" size={16} color="#27ae60" />
+                                            <Text style={styles.featureText}>Синхронизация между устройствами</Text>
+                                        </View>
+                                    </View>
                                 </View>
-                            </View>
 
-                            <View style={styles.authButtons}>
-                                <TouchableOpacity
-                                    style={[styles.button, styles.loginButton]}
-                                    onPress={handleLogin}
-                                >
-                                    <Text style={styles.loginButtonText}>Войти</Text>
-                                </TouchableOpacity>
+                                <View style={styles.authButtons}>
+                                    <TouchableOpacity
+                                        style={[styles.button, styles.loginButton]}
+                                        onPress={handleLogin}
+                                    >
+                                        <Feather name="log-in" size={18} color="white" />
+                                        <Text style={styles.loginButtonText}>Войти</Text>
+                                    </TouchableOpacity>
 
-                                <TouchableOpacity
-                                    style={[styles.button, styles.registerButton]}
-                                    onPress={handleRegister}
-                                >
-                                    <Text style={styles.registerButtonText}>Зарегистрироваться</Text>
-                                </TouchableOpacity>
+                                    <TouchableOpacity
+                                        style={[styles.button, styles.registerButton]}
+                                        onPress={handleRegister}
+                                    >
+                                        <Feather name="user-plus" size={18} color="#4a6fa5" />
+                                        <Text style={styles.registerButtonText}>Зарегистрироваться</Text>
+                                    </TouchableOpacity>
+                                </View>
                             </View>
                         </>
                     )}
                 </View>
 
-                {token && (
-                    <View style={styles.settingsSection}>
-                        <Text style={styles.sectionTitle}>Настройки</Text>
+                {/* Дополнительная информация для авторизованных пользователей */}
+                {token && userData?.role === 'admin' && (
+                    <View style={styles.adminSection}>
+                        <View style={styles.sectionHeader}>
+                            <Feather name="shield" size={20} color="#e74c3c" />
+                            <Text style={styles.sectionTitle}>Панель администратора</Text>
+                        </View>
 
-                        <TouchableOpacity style={styles.settingItem}>
-                            <Text style={styles.settingText}>Уведомления</Text>
-                            <Text style={styles.chevron}>›</Text>
-                        </TouchableOpacity>
+                        <Text style={styles.adminText}>
+                            У вас есть права администратора. Вы можете управлять пользователями и настройками системы.
+                        </Text>
 
-                        <TouchableOpacity style={styles.settingItem}>
-                            <Text style={styles.settingText}>Безопасность</Text>
-                            <Text style={styles.chevron}>›</Text>
-                        </TouchableOpacity>
-
-                        <TouchableOpacity style={styles.settingItem}>
-                            <Text style={styles.settingText}>Приватность</Text>
-                            <Text style={styles.chevron}>›</Text>
-                        </TouchableOpacity>
+                        <View style={styles.adminFeatures}>
+                            <View style={styles.adminFeature}>
+                                <Feather name="users" size={16} color="#e74c3c" />
+                                <Text style={styles.adminFeatureText}>Управление пользователями</Text>
+                            </View>
+                            <View style={styles.adminFeature}>
+                                <Feather name="settings" size={16} color="#e74c3c" />
+                                <Text style={styles.adminFeatureText}>Настройки системы</Text>
+                            </View>
+                            <View style={styles.adminFeature}>
+                                <Feather name="bar-chart" size={16} color="#e74c3c" />
+                                <Text style={styles.adminFeatureText}>Аналитика и отчеты</Text>
+                            </View>
+                        </View>
                     </View>
                 )}
+
+                {/* Информация о приложении */}
+                <View style={styles.appInfo}>
+                    <Text style={styles.appInfoTitle}>О приложении</Text>
+                    <Text style={styles.appInfoText}>
+                        Приложение для мониторинга и анализа веб-сайтов.
+                        {token ? ' Используйте все возможности системы.' : ' Авторизуйтесь для полного доступа.'}
+                    </Text>
+                    <Text style={styles.appVersion}>Версия 1.0.0</Text>
+                </View>
             </ScrollView>
         </SafeAreaView>
     );
@@ -156,45 +376,87 @@ const styles = StyleSheet.create({
         flex: 1,
         backgroundColor: '#f8f9fa',
     },
+    loadingContainer: {
+        flex: 1,
+        justifyContent: 'center',
+        alignItems: 'center',
+    },
+    loadingText: {
+        marginTop: 12,
+        fontSize: 16,
+        color: '#7f8c8d',
+    },
     content: {
-        padding: 16,
+        paddingBottom: 40,
     },
     header: {
-        marginBottom: 24,
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        paddingHorizontal: 20,
+        paddingVertical: 16,
+        backgroundColor: 'white',
+        borderBottomWidth: 1,
+        borderBottomColor: '#e0e0e0',
+    },
+    backButton: {
+        padding: 4,
     },
     title: {
-        fontSize: 28,
+        fontSize: 22,
         fontWeight: 'bold',
         color: '#2c3e50',
+    },
+    headerPlaceholder: {
+        width: 32,
     },
     profileCard: {
         backgroundColor: 'white',
         borderRadius: 20,
+        margin: 20,
         padding: 24,
-        alignItems: 'center',
         shadowColor: '#000',
         shadowOffset: {
             width: 0,
-            height: 2,
+            height: 4,
         },
         shadowOpacity: 0.1,
-        shadowRadius: 8,
-        elevation: 4,
+        shadowRadius: 12,
+        elevation: 6,
+    },
+    avatarSection: {
+        alignItems: 'center',
         marginBottom: 24,
     },
     avatar: {
         width: 100,
         height: 100,
         borderRadius: 50,
-        backgroundColor: '#4a6fa5',
         justifyContent: 'center',
         alignItems: 'center',
         marginBottom: 16,
+        position: 'relative',
+    },
+    adminBadge: {
+        position: 'absolute',
+        bottom: 0,
+        right: 0,
+        backgroundColor: '#e74c3c',
+        width: 28,
+        height: 28,
+        borderRadius: 14,
+        justifyContent: 'center',
+        alignItems: 'center',
+        borderWidth: 2,
+        borderColor: 'white',
     },
     avatarText: {
-        fontSize: 40,
+        fontSize: 42,
         color: 'white',
         fontWeight: 'bold',
+    },
+    userInfoHeader: {
+        alignItems: 'center',
     },
     userName: {
         fontSize: 24,
@@ -202,114 +464,256 @@ const styles = StyleSheet.create({
         color: '#2c3e50',
         marginBottom: 4,
     },
-    userEmail: {
-        fontSize: 16,
-        color: '#7f8c8d',
-        marginBottom: 24,
+    roleContainer: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        backgroundColor: '#f8f9fa',
+        paddingHorizontal: 12,
+        paddingVertical: 6,
+        borderRadius: 16,
+    },
+    userRole: {
+        fontSize: 14,
+        fontWeight: '500',
+        marginLeft: 6,
     },
     infoSection: {
-        width: '100%',
         marginBottom: 24,
+    },
+    sectionHeader: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        marginBottom: 16,
+    },
+    refreshInfoButton: {
+        marginLeft: 'auto',
+        padding: 4,
     },
     sectionTitle: {
         fontSize: 18,
         fontWeight: '600',
         color: '#2c3e50',
-        marginBottom: 16,
+        marginLeft: 8,
     },
-    infoRow: {
+    infoGrid: {
         flexDirection: 'row',
-        justifyContent: 'space-between',
-        paddingVertical: 12,
-        borderBottomWidth: 1,
-        borderBottomColor: '#f0f0f0',
+        flexWrap: 'wrap',
+        gap: 12,
+    },
+    infoItem: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        backgroundColor: '#f8f9fa',
+        padding: 12,
+        borderRadius: 12,
+        flex: 1,
+        minWidth: '48%',
+    },
+    infoIcon: {
+        width: 32,
+        height: 32,
+        borderRadius: 16,
+        backgroundColor: 'white',
+        justifyContent: 'center',
+        alignItems: 'center',
+        marginRight: 12,
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 1 },
+        shadowOpacity: 0.1,
+        shadowRadius: 2,
+        elevation: 1,
+    },
+    infoContent: {
+        flex: 1,
     },
     infoLabel: {
-        fontSize: 16,
+        fontSize: 12,
         color: '#7f8c8d',
+        marginBottom: 2,
     },
     infoValue: {
-        fontSize: 16,
+        fontSize: 14,
         color: '#2c3e50',
         fontWeight: '500',
     },
-    guestText: {
-        fontSize: 16,
-        color: '#7f8c8d',
-        marginBottom: 16,
-        textAlign: 'center',
+    roleBadge: {
+        alignSelf: 'flex-start',
+        paddingHorizontal: 8,
+        paddingVertical: 4,
+        borderRadius: 6,
     },
-    featureList: {
-        marginLeft: 16,
+    roleBadgeText: {
+        fontSize: 12,
+        fontWeight: '600',
     },
-    featureItem: {
+    loadingInfo: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'center',
+        padding: 16,
+        backgroundColor: '#f8f9fa',
+        borderRadius: 12,
+        marginTop: 12,
+    },
+    loadingInfoText: {
+        marginLeft: 8,
         fontSize: 14,
         color: '#7f8c8d',
-        marginBottom: 8,
     },
-    authButtons: {
-        width: '100%',
+    actionButtons: {
         gap: 12,
     },
     button: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'center',
         borderRadius: 12,
         padding: 16,
-        alignItems: 'center',
+        gap: 12,
     },
-    loginButton: {
+    sitesButton: {
         backgroundColor: '#4a6fa5',
     },
-    registerButton: {
-        backgroundColor: 'transparent',
-        borderWidth: 2,
-        borderColor: '#4a6fa5',
-    },
-    logoutButton: {
-        backgroundColor: '#e74c3c',
-        width: '100%',
-    },
-    loginButtonText: {
+    sitesButtonText: {
         color: 'white',
         fontSize: 16,
         fontWeight: '600',
     },
-    registerButtonText: {
-        color: '#4a6fa5',
-        fontSize: 16,
-        fontWeight: '600',
+    logoutButton: {
+        backgroundColor: '#e74c3c',
     },
     logoutButtonText: {
         color: 'white',
         fontSize: 16,
         fontWeight: '600',
     },
-    settingsSection: {
+    guestAvatar: {
+        width: 120,
+        height: 120,
+        borderRadius: 60,
+        backgroundColor: '#f8f9fa',
+        justifyContent: 'center',
+        alignItems: 'center',
+        alignSelf: 'center',
+        marginBottom: 20,
+        borderWidth: 2,
+        borderColor: '#e0e0e0',
+    },
+    guestTitle: {
+        fontSize: 24,
+        fontWeight: 'bold',
+        color: '#2c3e50',
+        textAlign: 'center',
+        marginBottom: 4,
+    },
+    guestSubtitle: {
+        fontSize: 16,
+        color: '#7f8c8d',
+        textAlign: 'center',
+        marginBottom: 24,
+    },
+    guestInfo: {
+        gap: 24,
+    },
+    featureSection: {
+        marginBottom: 8,
+    },
+    featureList: {
+        gap: 12,
+    },
+    featureItem: {
+        flexDirection: 'row',
+        alignItems: 'center',
+    },
+    featureText: {
+        fontSize: 14,
+        color: '#2c3e50',
+        marginLeft: 12,
+        flex: 1,
+    },
+    authButtons: {
+        gap: 12,
+    },
+    loginButton: {
+        backgroundColor: '#4a6fa5',
+    },
+    loginButtonText: {
+        color: 'white',
+        fontSize: 16,
+        fontWeight: '600',
+    },
+    registerButton: {
+        backgroundColor: 'white',
+        borderWidth: 2,
+        borderColor: '#4a6fa5',
+    },
+    registerButtonText: {
+        color: '#4a6fa5',
+        fontSize: 16,
+        fontWeight: '600',
+    },
+    adminSection: {
+        backgroundColor: '#fff5f5',
+        borderRadius: 20,
+        marginHorizontal: 20,
+        marginBottom: 20,
+        padding: 20,
+        borderWidth: 1,
+        borderColor: '#ffebee',
+    },
+    adminText: {
+        fontSize: 14,
+        color: '#666',
+        lineHeight: 20,
+        marginBottom: 16,
+    },
+    adminFeatures: {
+        gap: 12,
+    },
+    adminFeature: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        backgroundColor: 'rgba(231, 76, 60, 0.1)',
+        padding: 12,
+        borderRadius: 8,
+    },
+    adminFeatureText: {
+        fontSize: 14,
+        color: '#e74c3c',
+        fontWeight: '500',
+        marginLeft: 12,
+    },
+    appInfo: {
         backgroundColor: 'white',
         borderRadius: 20,
-        padding: 16,
+        marginHorizontal: 20,
+        padding: 20,
+        alignItems: 'center',
         shadowColor: '#000',
         shadowOffset: {
             width: 0,
             height: 2,
         },
-        shadowOpacity: 0.1,
+        shadowOpacity: 0.05,
         shadowRadius: 8,
-        elevation: 4,
+        elevation: 2,
     },
-    settingItem: {
-        flexDirection: 'row',
-        justifyContent: 'space-between',
-        alignItems: 'center',
-        paddingVertical: 16,
-        borderBottomWidth: 1,
-        borderBottomColor: '#f0f0f0',
-    },
-    settingText: {
+    appInfoTitle: {
         fontSize: 16,
+        fontWeight: '600',
         color: '#2c3e50',
+        marginBottom: 8,
     },
-    chevron: {
-        fontSize: 20,
+    appInfoText: {
+        fontSize: 14,
+        color: '#7f8c8d',
+        textAlign: 'center',
+        lineHeight: 20,
+        marginBottom: 8,
+    },
+    appVersion: {
+        fontSize: 12,
         color: '#bdc3c7',
+        fontStyle: 'italic',
     },
 });

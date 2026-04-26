@@ -2,6 +2,7 @@
 using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 using webParser.Data;
@@ -11,9 +12,11 @@ using webParser.Data;
 namespace webParser.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    partial class AppDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260130212131_AddRefreshTokenToUser")]
+    partial class AddRefreshTokenToUser
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -33,9 +36,6 @@ namespace webParser.Migrations
                     b.Property<int>("AnalyzedSiteId")
                         .HasColumnType("integer");
 
-                    b.Property<int?>("FieldNameId")
-                        .HasColumnType("integer");
-
                     b.Property<string>("FieldToGet")
                         .IsRequired()
                         .HasColumnType("text");
@@ -47,8 +47,6 @@ namespace webParser.Migrations
                     b.HasKey("Id");
 
                     b.HasIndex("AnalyzedSiteId");
-
-                    b.HasIndex("FieldNameId");
 
                     b.ToTable("AnalyzedFields");
                 });
@@ -92,24 +90,6 @@ namespace webParser.Migrations
                     b.HasIndex("UserId");
 
                     b.ToTable("FavoriteSites");
-                });
-
-            modelBuilder.Entity("webParser.Models.Database.FieldName", b =>
-                {
-                    b.Property<int>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("integer");
-
-                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
-
-                    b.Property<string>("Name")
-                        .IsRequired()
-                        .HasMaxLength(40)
-                        .HasColumnType("character varying(40)");
-
-                    b.HasKey("Id");
-
-                    b.ToTable("FieldNames");
                 });
 
             modelBuilder.Entity("webParser.Models.Database.Role", b =>
@@ -194,11 +174,6 @@ namespace webParser.Migrations
                         .HasForeignKey("AnalyzedSiteId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
-
-                    b.HasOne("webParser.Models.Database.FieldName", null)
-                        .WithMany()
-                        .HasForeignKey("FieldNameId")
-                        .OnDelete(DeleteBehavior.SetNull);
                 });
 
             modelBuilder.Entity("webParser.Models.Database.AnalyzedSite", b =>
