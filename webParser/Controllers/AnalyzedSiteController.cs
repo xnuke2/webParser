@@ -9,7 +9,9 @@ using webParser.Models.DTO.AnalyzedSite;
 namespace webParser.Controllers;
 [Route("api/[controller]")]
 [ApiController]
-[Authorize(Roles = "Редактор,Администратор")]
+//временно
+[AllowAnonymous]
+//[Authorize(Roles = "Редактор,Администратор")]
 public class AnalyzedSiteController(ILogger<HomeController> logger, AppDbContext context) : Controller
 {
     [HttpGet("all")]
@@ -42,14 +44,15 @@ public class AnalyzedSiteController(ILogger<HomeController> logger, AppDbContext
             return BadRequest("no user id");
         if(context.AnalyzedSites.Any(s=>s.Url==site.Url))
             return BadRequest("Site already exists");
-        context.AnalyzedSites.Add(new AnalyzedSite()
+        var entity = new AnalyzedSite()
         {
             Name = site.Name,
             Url = site.Url,
             UserId = Convert.ToInt32(id)
-        });
+        };
+        context.AnalyzedSites.Add(entity);
         context.SaveChanges();
-        return Ok(site);
+        return Ok(entity);
 
     }
 

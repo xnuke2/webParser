@@ -10,6 +10,8 @@ namespace webParser.Controllers;
 
 [Route("api/[controller]")]
 [ApiController]
+//временно
+[AllowAnonymous]
 //[Authorize(Roles = "Редактор,Администратор")]
 public class AnalyzedFieldController(ILogger<HomeController> logger, AppDbContext context) : Controller
 {
@@ -47,13 +49,16 @@ public class AnalyzedFieldController(ILogger<HomeController> logger, AppDbContex
             return BadRequest("site id is required");
         if (dto.FieldToGet == "")
             return BadRequest("field id is required");
+        if(context.FieldNames.Find(dto.FieldNameId)==null)
+            return NotFound("field not found");
         if(context.AnalyzedSites.Find(dto.AnalyzedSiteId)==null)
             return NotFound("site not found");
         context.AnalyzedFields.Add(new AnalyzedField()
         {
             Name = dto.Name,
             FieldToGet = dto.FieldToGet,
-            AnalyzedSiteId = dto.AnalyzedSiteId
+            AnalyzedSiteId = dto.AnalyzedSiteId,
+            FieldNameId = dto.FieldNameId
         });
         context.SaveChanges();
         return Ok(dto);
@@ -70,10 +75,13 @@ public class AnalyzedFieldController(ILogger<HomeController> logger, AppDbContex
         var site = context.AnalyzedFields.Find(id);
         if (site == null)
             return NotFound("site not found");
+        if(context.FieldNames.Find(dto.FieldNameId)==null)
+            return NotFound("field not found");
         if (dto.AnalyzedSiteId != null)
             site.AnalyzedSiteId =(int)dto.AnalyzedSiteId;
         site.Name = dto.Name??site.Name;
         site.FieldToGet = dto.FieldToGet??site.FieldToGet;
+        site.FieldNameId = dto.FieldNameId ?? site.FieldNameId;
         context.SaveChanges();
         return Ok(dto);
     }

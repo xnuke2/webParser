@@ -33,7 +33,7 @@ namespace webParser.Migrations
                     b.Property<int>("AnalyzedSiteId")
                         .HasColumnType("integer");
 
-                    b.Property<int?>("FieldNameId")
+                    b.Property<int>("FieldNameId")
                         .HasColumnType("integer");
 
                     b.Property<string>("FieldToGet")
@@ -110,6 +110,97 @@ namespace webParser.Migrations
                     b.HasKey("Id");
 
                     b.ToTable("FieldNames");
+
+                    b.HasData(
+                        new
+                        {
+                            Id = 1,
+                            Name = "Цена"
+                        },
+                        new
+                        {
+                            Id = 2,
+                            Name = "Год выпуска"
+                        },
+                        new
+                        {
+                            Id = 3,
+                            Name = "Марка"
+                        },
+                        new
+                        {
+                            Id = 4,
+                            Name = "Модель"
+                        },
+                        new
+                        {
+                            Id = 5,
+                            Name = "Пробег"
+                        },
+                        new
+                        {
+                            Id = 6,
+                            Name = "Мощность двигателя"
+                        },
+                        new
+                        {
+                            Id = 7,
+                            Name = "Объём двигателя"
+                        },
+                        new
+                        {
+                            Id = 8,
+                            Name = "Тип топлива"
+                        },
+                        new
+                        {
+                            Id = 9,
+                            Name = "Коробка передач"
+                        },
+                        new
+                        {
+                            Id = 10,
+                            Name = "Привод"
+                        },
+                        new
+                        {
+                            Id = 11,
+                            Name = "Цвет"
+                        },
+                        new
+                        {
+                            Id = 12,
+                            Name = "Кузов"
+                        });
+                });
+
+            modelBuilder.Entity("webParser.Models.Database.ParsedData", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
+
+                    b.Property<string>("Data")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("Field")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<int>("SiteId")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("SiteId");
+
+                    b.ToTable("ParsedData");
                 });
 
             modelBuilder.Entity("webParser.Models.Database.Role", b =>
@@ -221,6 +312,15 @@ namespace webParser.Migrations
                     b.HasOne("webParser.Models.Database.User", null)
                         .WithMany()
                         .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("webParser.Models.Database.ParsedData", b =>
+                {
+                    b.HasOne("webParser.Models.Database.AnalyzedSite", null)
+                        .WithMany()
+                        .HasForeignKey("SiteId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
                 });

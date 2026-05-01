@@ -8,7 +8,8 @@ namespace webParser.Controllers;
 
 [Route("api/[controller]")]
 [ApiController]
-[Authorize(Roles = "Редактор,Администратор")]
+[AllowAnonymous]
+//[Authorize(Roles = "Редактор,Администратор")]
 public class FieldNameController(ILogger<FieldNameController> logger, AppDbContext context) : Controller
 {
     [HttpGet("all")]

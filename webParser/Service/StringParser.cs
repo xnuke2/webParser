@@ -1,3 +1,4 @@
+using System.Text.Json;
 using System.Text.RegularExpressions;
 using HtmlAgilityPack;
 using webParser.Models.DTO;
@@ -27,7 +28,7 @@ public class StringParser
     public List<DataField> ParseString(string html, List<DataField> fields)
     {
         var result = new List<DataField>();
-        
+
         if (string.IsNullOrEmpty(html))
         {
             _logger.LogWarning("HTML content is null or empty");
@@ -35,8 +36,9 @@ public class StringParser
         }
 
         var doc = new HtmlDocument();
+        doc.OptionDefaultStreamEncoding = System.Text.Encoding.UTF8;
         doc.LoadHtml(html);
-        
+
         _logger.LogInformation("Parsing HTML with {Count} fields", fields.Count);
 
         foreach (var field in fields)
@@ -60,20 +62,36 @@ public class StringParser
                     if (node != null)
                         extracted = ExtractTextWithStructure(node);
                 }
-                
+
                 // 2. Поиск по data-ftid
                 if (extracted == null)
                     extracted = FindByDataFtid(doc, selector);
-                
+
                 // 3. Поиск как CSS-селектор
                 if (extracted == null)
                     extracted = FindByCssSelector(doc, selector);
-                
+
                 // 4. Поиск по тексту соседнего элемента (например, "Пробег" -> следующая ячейка)
                 if (extracted == null)
                     extracted = FindByAdjacentText(doc, selector);
-                
-                // 5. Конвертация HTML-фрагмента в XPath
+
+                // 5. Поиск по youla slug — ищем в исходном HTML, т.к. HtmlAgilityPack энкодит скрипты
+                if (extracted == null)
+                    extracted = FindByYoulaSlug(html, selector);
+
+                // 6. Поиск по label/value div-парам (autospot, avito и подобные)
+                if (extracted == null)
+                    extracted = FindByLabelValueDiv(doc, selector);
+
+                // 7. Поиск по dt/dd парам (drom и подобные)
+                if (extracted == null)
+                    extracted = FindByDtDd(doc, selector);
+
+                // 8. Поиск по itemprop атрибуту (schema.org микроразметка)
+                if (extracted == null)
+                    extracted = FindByItemprop(doc, selector);
+
+                // 8. Конвертация HTML-фрагмента в XPath
                 if (extracted == null)
                 {
                     var xpath = ConvertHtmlToXPath(selector);
@@ -185,15 +203,159 @@ public class StringParser
             {
                 foreach (var node in nodes)
                 {
+                    // tr/td pattern
                     var row = node.Ancestors("tr").FirstOrDefault();
                     if (row != null)
                     {
-                        var valueCell = row.SelectSingleNode(".//td[@data-ftid='value']");
+                        var valueCell = row.SelectSingleNode(".//td[@data-ftid='value']")
+                                     ?? row.SelectNodes(".//td")?.Skip(1).FirstOrDefault();
                         if (valueCell != null)
                             return ExtractTextWithStructure(valueCell);
                     }
+
+                    // dt/dd pattern
+                    if (node.Name == "dt" || node.Ancestors("dt").Any())
+                    {
+                        var dt = node.Name == "dt" ? node : node.Ancestors("dt").First();
+                        var dd = dt.NextSibling;
+                        while (dd != null && dd.NodeType != HtmlNodeType.Element)
+                            dd = dd.NextSibling;
+                        if (dd?.Name == "dd")
+                            return ExtractTextWithStructure(dd);
+                    }
+
+                    // div label/value pattern (autospot, avito)
+                    var labelDiv = node.Ancestors().FirstOrDefault(a =>
+                        a.GetAttributeValue("class", "").Contains("title") ||
+                        a.GetAttributeValue("class", "").Contains("label") ||
+                        a.GetAttributeValue("class", "").Contains("name"));
+                    if (labelDiv != null)
+                    {
+                        var parent = labelDiv.ParentNode;
+                        if (parent != null)
+                        {
+                            var valueDiv = parent.ChildNodes
+                                .Where(c => c.NodeType == HtmlNodeType.Element && c != labelDiv)
+                                .FirstOrDefault(c =>
+                                    c.GetAttributeValue("class", "").Contains("value") ||
+                                    c.GetAttributeValue("class", "").Contains("val"));
+                            if (valueDiv != null)
+                                return ExtractTextWithStructure(valueDiv);
+                        }
+                    }
                 }
             }
+        }
+        return null;
+    }
+
+    // schema.org: selector = "itemprop:price"
+    private string FindByItemprop(HtmlDocument doc, string selector)
+    {
+        var match = Regex.Match(selector, @"^itemprop:(.+)$");
+        if (!match.Success) return null;
+
+        var prop = match.Groups[1].Value.Trim();
+        var node = doc.DocumentNode.SelectSingleNode($"//*[@itemprop='{prop}']");
+        if (node == null) return null;
+
+        // Prefer content attribute (meta tags), then innerText
+        var content = node.GetAttributeValue("content", null);
+        if (!string.IsNullOrWhiteSpace(content))
+            return content.Trim();
+
+        return ExtractTextWithStructure(node);
+    }
+
+    // youla.ru: selector = "youla:auto_mileage" or "youla:price"
+    private string FindByYoulaSlug(string rawHtml, string selector)
+    {
+        var match = Regex.Match(selector, @"^youla:([\w]+)$");
+        if (!match.Success) return null;
+
+        var slug = match.Groups[1].Value;
+
+        // Special case: price is stored in kopecks as "price":230000000
+        if (slug == "price")
+        {
+            var pm = Regex.Match(rawHtml, @"""price""\s*:\s*(\d+)");
+            if (pm.Success && long.TryParse(pm.Groups[1].Value, out var kopecks))
+                return (kopecks / 100).ToString("N0").Replace(",", " ") + " ₽";
+            return null;
+        }
+
+        // auto_* slugs: "slug":"auto_xxx",...,"rawValue":"..."
+        var pattern = $@"""slug""\s*:\s*""{Regex.Escape(slug)}""[\s\S]{{0,400}}?""rawValue""\s*:\s*""((?:[^""\\]|\\.)*)""";
+        var m = Regex.Match(rawHtml, pattern);
+        if (!m.Success) return null;
+
+        var rawVal = m.Groups[1].Value;
+        rawVal = Regex.Replace(rawVal, @"\\u([0-9a-fA-F]{4})", mx =>
+            ((char)Convert.ToInt32(mx.Groups[1].Value, 16)).ToString());
+        return rawVal;
+    }
+
+    // autospot.ru and similar: selector = "label:Двигатель"
+    private string FindByLabelValueDiv(HtmlDocument doc, string selector)
+    {
+        var match = Regex.Match(selector, @"^label:(.+)$");
+        if (!match.Success) return null;
+
+        var labelText = match.Groups[1].Value.Trim();
+
+        // Pattern: <div class="*title*">Label</div><div class="*value*">Value</div>
+        var titleNodes = doc.DocumentNode.SelectNodes(
+            $"//*[contains(@class,'title') or contains(@class,'label') or contains(@class,'name')]");
+        if (titleNodes != null)
+        {
+            foreach (var titleNode in titleNodes)
+            {
+                var nodeText = titleNode.InnerText.Trim();
+                if (!nodeText.Equals(labelText, StringComparison.OrdinalIgnoreCase)) continue;
+
+                var parent = titleNode.ParentNode;
+                if (parent == null) continue;
+
+                // Look for sibling with value class
+                var valueNode = parent.ChildNodes
+                    .Where(c => c.NodeType == HtmlNodeType.Element && c != titleNode)
+                    .FirstOrDefault(c =>
+                        c.GetAttributeValue("class", "").Contains("value") ||
+                        c.GetAttributeValue("class", "").Contains("val"));
+                if (valueNode != null)
+                    return ExtractTextWithStructure(valueNode);
+
+                // Or just the next sibling element
+                var next = titleNode.NextSibling;
+                while (next != null && next.NodeType != HtmlNodeType.Element)
+                    next = next.NextSibling;
+                if (next != null && next != titleNode)
+                    return ExtractTextWithStructure(next);
+            }
+        }
+        return null;
+    }
+
+    // drom.ru and similar: selector = "dt:Пробег"
+    private string FindByDtDd(HtmlDocument doc, string selector)
+    {
+        var match = Regex.Match(selector, @"^dt:(.+)$");
+        if (!match.Success) return null;
+
+        var labelText = match.Groups[1].Value.Trim();
+
+        var dtNodes = doc.DocumentNode.SelectNodes("//dt");
+        if (dtNodes == null) return null;
+
+        foreach (var dt in dtNodes)
+        {
+            if (!dt.InnerText.Trim().Equals(labelText, StringComparison.OrdinalIgnoreCase)) continue;
+
+            var dd = dt.NextSibling;
+            while (dd != null && dd.NodeType != HtmlNodeType.Element)
+                dd = dd.NextSibling;
+            if (dd?.Name == "dd")
+                return ExtractTextWithStructure(dd);
         }
         return null;
     }
@@ -315,7 +477,7 @@ public class StringParser
         {
             if (n.NodeType == HtmlNodeType.Text)
             {
-                var text = n.InnerText.Trim();
+                var text = System.Net.WebUtility.HtmlDecode(n.InnerText).Trim();
                 if (!string.IsNullOrEmpty(text))
                 {
                     if (needSpaceBeforeNextOutput && sb.Length > 0 && !sb.ToString().EndsWith(" ") && !sb.ToString().EndsWith("\n"))

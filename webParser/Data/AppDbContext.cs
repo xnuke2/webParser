@@ -15,6 +15,7 @@ public class AppDbContext : DbContext
     
     public DbSet<AnalyzedField> AnalyzedFields => Set<AnalyzedField>();
     public DbSet<FieldName> FieldNames => Set<FieldName>();
+    public DbSet<ParsedData> ParsedData => Set<ParsedData>();
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         modelBuilder.Entity<User>(entity =>
@@ -39,7 +40,7 @@ public class AppDbContext : DbContext
         {
             entity.HasKey(e => e.Id);
             entity.Property(e => e.Url).IsRequired();
-            
+
             entity.HasOne<User>()
                 .WithMany()
                 .HasForeignKey(a => a.UserId)
@@ -50,6 +51,17 @@ public class AppDbContext : DbContext
         {
             entity.HasKey(e => e.Id);
             entity.Property(e => e.Name).IsRequired().HasMaxLength(40);
+        });
+
+        modelBuilder.Entity<ParsedData>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.Field).IsRequired();
+            entity.Property(e => e.Data).IsRequired();
+            entity.HasOne<AnalyzedSite>()
+                .WithMany()
+                .HasForeignKey(p => p.SiteId)
+                .OnDelete(DeleteBehavior.Cascade);
         });
 
         modelBuilder.Entity<AnalyzedField>(entity =>
@@ -110,5 +122,19 @@ public class AppDbContext : DbContext
                 Password = "admin",
                 RoleId = 3
             });
+        modelBuilder.Entity<FieldName>().HasData(
+            new FieldName { Id = 1, Name = "Цена" },
+            new FieldName { Id = 2, Name = "Год выпуска" },
+            new FieldName { Id = 3, Name = "Марка" },
+            new FieldName { Id = 4, Name = "Модель" },
+            new FieldName { Id = 5, Name = "Пробег" },
+            new FieldName { Id = 6, Name = "Мощность двигателя" },
+            new FieldName { Id = 7, Name = "Объём двигателя" },
+            new FieldName { Id = 8, Name = "Тип топлива" },
+            new FieldName { Id = 9, Name = "Коробка передач" },
+            new FieldName { Id = 10, Name = "Привод" },
+            new FieldName { Id = 11, Name = "Цвет" },
+            new FieldName { Id = 12, Name = "Кузов" }
+        );
     }
 }

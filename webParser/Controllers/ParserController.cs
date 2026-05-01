@@ -10,45 +10,61 @@ namespace webParser.Controllers;
 [ApiController]
 public class ParserController(ILogger<ParserController> logger, AppDbContext context, HtmlService htmlService, StringParser stringParser) : Controller
 {
-   [HttpGet("{id}")]
-[AllowAnonymous]
-public async Task<IActionResult> ParseSite([FromRoute]int id)
-{
-    try
+    [HttpGet("{id}")]
+    [AllowAnonymous]
+    public async Task<IActionResult> ParseSite([FromRoute] int id)
     {
-        var site = context.AnalyzedSites.Find(id);
-        if (site == null)
-            return BadRequest("Site not found");
-        
-        logger.LogInformation("Parsing site ID: {Id}, URL: {Url}", id, site.Url);
-        
-        var fields = context.AnalyzedFields
-            .Where(f => f.AnalyzedSiteId == id)
-            .Select(f => new DataField()
+        try
+        {
+            var site = context.AnalyzedSites.Find(id);
+            if (site == null)
+                return BadRequest("Site not found");
+
+            // Возвращаем из кэша если есть
+            var cached = context.ParsedData
+                .Where(p => p.SiteId == id)
+                .Select(p => new { p.Field, p.Data })
+                .ToList();
+
+            if (cached.Count > 0)
             {
-                Field = f.Name,
-                Data = f.FieldToGet
-            }).ToList();
-            
-        if (fields.Count == 0)
-            return BadRequest("No Fields found");
-            
-        logger.LogInformation("Found {Count} fields to parse", fields.Count);
-        
-        var page = await htmlService.GetHtmlWithPlaywrightAsync(site.Url);
-        var result = stringParser.ParseString(page, fields);
-        
-        logger.LogInformation("Parsing completed. Results: {Results}", 
-            string.Join(", ", result.Select(r => $"{r.Field}: '{r.Data}'")));
-        
-        return Ok(result.Select(f => new { f.Field, f.Data }).ToList());
+                logger.LogInformation("Returning cached data for site {Id}", id);
+                return Ok(cached);
+            }
+
+            // Если кэша нет — парсим живьём
+            logger.LogInformation("No cache for site {Id}, parsing live", id);
+
+            var fields = context.AnalyzedFields
+                .Where(f => f.AnalyzedSiteId == id)
+                .Select(f => new DataField { Field = f.Name, Data = f.FieldToGet })
+                .ToList();
+
+            if (fields.Count == 0)
+                return BadRequest("No Fields found");
+
+            var page = await htmlService.GetHtmlWithPlaywrightAsync(site.Url);
+            var result = stringParser.ParseString(page, fields);
+
+            // Сохраняем в кэш
+            var now = DateTime.UtcNow;
+            context.ParsedData.AddRange(result.Select(r => new Models.Database.ParsedData
+            {
+                SiteId = id,
+                Field = r.Field,
+                Data = r.Data,
+                UpdatedAt = now
+            }));
+            await context.SaveChangesAsync();
+
+            return Ok(result.Select(f => new { f.Field, f.Data }).ToList());
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Error parsing site ID: {Id}", id);
+            return StatusCode(500, $"Internal server error: {ex.Message}");
+        }
     }
-    catch (Exception ex)
-    {
-        logger.LogError(ex, "Error parsing site ID: {Id}", id);
-        return StatusCode(500, $"Internal server error: {ex.Message}");
-    }
-}
     [HttpGet("test")]
     [AllowAnonymous]
     public async Task<IActionResult> TestParser([FromQuery] string url, [FromQuery] string selector)

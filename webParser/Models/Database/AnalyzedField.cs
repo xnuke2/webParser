@@ -10,5 +10,5 @@ public class AnalyzedField
     [ForeignKey("AnalyzedSite")]
     public required int AnalyzedSiteId { get; set; }
     [ForeignKey("FieldName")]
-    public int? FieldNameId { get; set; }
+    public int FieldNameId { get; set; }
 }

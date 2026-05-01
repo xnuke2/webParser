@@ -9,7 +9,9 @@ public class HtmlServiceOptions
     public int MinHtmlLengthForHttp { get; set; } = 3000;
     public string[] JsHeavySites { get; set; } = { "auto.ru", "drom.ru", "avito.ru", "sberauto.com","auto.drom.ru" };
     public bool ForcePlaywrightForJsSites { get; set; } = true;
-    
+    public string ProxyListPath { get; set; } = "config/Webshare 10 proxies.txt";
+
     public int RateLimitMinDelayMs { get; set; } = 5000;
     public int RateLimitMaxDelayMs { get; set; } = 8000;
+    public int RetryDelayOnRateLimitMs { get; set; } = 30000;
 }

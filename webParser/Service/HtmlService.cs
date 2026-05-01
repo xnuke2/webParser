@@ -1,3 +1,4 @@
+using System.Net;
 using System.Text;
 using Microsoft.Extensions.Options;
 using Microsoft.Playwright;
@@ -10,7 +11,8 @@ public sealed class HtmlService : IAsyncDisposable
     private readonly IHttpClientFactory _httpClientFactory;
     private readonly ILogger<HtmlService> _logger;
     private readonly HtmlServiceOptions _options;
-    
+    private readonly string _contentRoot;
+
     private static IPlaywright? _playwright;
     private static IBrowser? _browser;
     private static readonly SemaphoreSlim _semaphore = new(1, 1);
@@ -19,13 +21,14 @@ public sealed class HtmlService : IAsyncDisposable
     public HtmlService(
         IHttpClientFactory httpClientFactory,
         IOptions<HtmlServiceOptions> options,
-        ILogger<HtmlService> logger)
+        ILogger<HtmlService> logger,
+        IWebHostEnvironment environment)
     {
         _httpClientFactory = httpClientFactory;
         _logger = logger;
         _options = options.Value;
-        
-        // Фоновая инициализация браузера (без ожидания)
+        _contentRoot = environment.ContentRootPath;
+
         _ = InitializeBrowserAsync();
     }
     
@@ -34,6 +37,93 @@ public sealed class HtmlService : IAsyncDisposable
         var delayMs = Random.Shared.Next(_options.RateLimitMinDelayMs, _options.RateLimitMaxDelayMs + 1);
         _logger.LogDebug("Applying rate limit delay: {DelayMs} ms", delayMs);
         await Task.Delay(delayMs);
+    }
+
+    private IEnumerable<Uri> LoadProxyUris()
+    {
+        var path = Path.IsPathRooted(_options.ProxyListPath)
+            ? _options.ProxyListPath
+            : Path.Combine(_contentRoot, _options.ProxyListPath);
+
+        if (!File.Exists(path))
+            return Array.Empty<Uri>();
+
+        return File.ReadLines(path)
+            .Select(line => line.Trim())
+            .Where(line => !string.IsNullOrWhiteSpace(line))
+            .Select(line => line.Split(':'))
+            .Where(parts => parts.Length >= 2)
+            .Select(parts => new Uri($"http://{parts[0]}:{parts[1]}"));
+    }
+
+    private HttpClient CreateHttpClient(Uri? proxy)
+    {
+        if (proxy is null)
+            return _httpClientFactory.CreateClient();
+
+        var handler = new HttpClientHandler
+        {
+            Proxy = new WebProxy(proxy),
+            UseProxy = true
+        };
+
+        return new HttpClient(handler, disposeHandler: true);
+    }
+
+    private async Task<string> FetchHtmlWithHttpClientAsync(string url, Uri? proxy)
+    {
+        using var client = CreateHttpClient(proxy);
+        client.Timeout = TimeSpan.FromSeconds(_options.HttpTimeoutSeconds);
+        client.DefaultRequestHeaders.UserAgent.ParseAdd("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36");
+        client.DefaultRequestHeaders.Accept.ParseAdd("text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8");
+        client.DefaultRequestHeaders.AcceptLanguage.ParseAdd("ru-RU,ru;q=0.9,en-US;q=0.8,en;q=0.7");
+
+        var response = await client.GetAsync(url);
+        if ((int)response.StatusCode == 429)
+        {
+            var retryAfter = response.Headers.RetryAfter?.Delta ?? TimeSpan.FromSeconds(30);
+            throw new HttpRequestException($"Rate limited (429): {url}. Retry after {retryAfter.TotalSeconds}s", null, response.StatusCode);
+        }
+
+        response.EnsureSuccessStatusCode();
+        var byteArray = await response.Content.ReadAsByteArrayAsync();
+        Encoding encoding = null;
+        if (response.Content.Headers.ContentType?.CharSet != null)
+        {
+            try { encoding = Encoding.GetEncoding(response.Content.Headers.ContentType.CharSet); } catch { }
+        }
+        if (encoding == null)
+        {
+            // Latin-1 preserves all byte values unlike ASCII, so charset detection works even after non-ASCII content
+            var latin1 = Encoding.GetEncoding("iso-8859-1").GetString(byteArray, 0, Math.Min(byteArray.Length, 4096));
+            var metaCharset = System.Text.RegularExpressions.Regex.Match(latin1, @"<meta[^>]+charset=[""']?\s*([\w-]+)", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+            if (metaCharset.Success)
+            {
+                try { encoding = Encoding.GetEncoding(metaCharset.Groups[1].Value); } catch { }
+            }
+        }
+        // Last resort: try to detect UTF-8 BOM or valid UTF-8 sequence, otherwise fall back to Windows-1251 for Cyrillic sites
+        if (encoding == null)
+        {
+            if (byteArray.Length >= 3 && byteArray[0] == 0xEF && byteArray[1] == 0xBB && byteArray[2] == 0xBF)
+            {
+                encoding = Encoding.UTF8;
+            }
+            else
+            {
+                try
+                {
+                    var utf8 = new UTF8Encoding(encoderShouldEmitUTF8Identifier: false, throwOnInvalidBytes: true);
+                    utf8.GetString(byteArray);
+                    encoding = Encoding.UTF8;
+                }
+                catch
+                {
+                    encoding = Encoding.GetEncoding("windows-1251");
+                }
+            }
+        }
+        return encoding.GetString(byteArray);
     }
 
     private async Task InitializeBrowserAsync()
@@ -129,9 +219,30 @@ public sealed class HtmlService : IAsyncDisposable
     {
         url = CleanUrl(url);
         _logger.LogInformation("Fetching with Playwright: {Url}", url);
-        
-        await ApplyRateLimitDelay();
 
+        const int maxRetries = 3;
+        for (int attempt = 1; attempt <= maxRetries; attempt++)
+        {
+            await ApplyRateLimitDelay();
+            try
+            {
+                return await FetchWithPlaywrightInternalAsync(url);
+            }
+            catch (HttpRequestException ex) when (ex.StatusCode == System.Net.HttpStatusCode.TooManyRequests)
+            {
+                if (attempt == maxRetries)
+                    throw;
+                var delay = _options.RetryDelayOnRateLimitMs * attempt;
+                _logger.LogWarning("Rate limited, attempt {Attempt}/{Max}, waiting {Delay}ms before retry", attempt, maxRetries, delay);
+                await Task.Delay(delay);
+            }
+        }
+
+        throw new InvalidOperationException("Unreachable");
+    }
+
+    private async Task<string> FetchWithPlaywrightInternalAsync(string url)
+    {
         try
         {
             await EnsureBrowserInitializedAsync();
@@ -139,22 +250,46 @@ public sealed class HtmlService : IAsyncDisposable
             // Создаём контекст и страницу для каждого запроса (изолированно)
             await using var context = await _browser!.NewContextAsync(new BrowserNewContextOptions
             {
-                UserAgent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36",
+                UserAgent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
                 ViewportSize = new ViewportSize { Width = 1920, Height = 1080 },
                 IgnoreHTTPSErrors = true,
                 JavaScriptEnabled = true,
-                BypassCSP = true
+                BypassCSP = true,
+                Locale = "ru-RU",
+                TimezoneId = "Europe/Moscow",
+                ExtraHTTPHeaders = new Dictionary<string, string>
+                {
+                    ["Accept"] = "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8",
+                    ["Accept-Language"] = "ru-RU,ru;q=0.9,en-US;q=0.8,en;q=0.7",
+                    ["Accept-Encoding"] = "gzip, deflate, br",
+                    ["Cache-Control"] = "no-cache",
+                    ["Pragma"] = "no-cache",
+                    ["Sec-Ch-Ua"] = "\"Chromium\";v=\"124\", \"Google Chrome\";v=\"124\", \"Not-A.Brand\";v=\"99\"",
+                    ["Sec-Ch-Ua-Mobile"] = "?0",
+                    ["Sec-Ch-Ua-Platform"] = "\"Windows\"",
+                    ["Sec-Fetch-Dest"] = "document",
+                    ["Sec-Fetch-Mode"] = "navigate",
+                    ["Sec-Fetch-Site"] = "none",
+                    ["Sec-Fetch-User"] = "?1",
+                    ["Upgrade-Insecure-Requests"] = "1"
+                }
             });
             
             var page = await context.NewPageAsync();
             try
             {
                 // Навигация с ожиданием DOMContentLoaded
-                await page.GotoAsync(url, new PageGotoOptions
+                var response = await page.GotoAsync(url, new PageGotoOptions
                 {
                     WaitUntil = WaitUntilState.DOMContentLoaded,
                     Timeout = _options.NavigationTimeoutMs
                 });
+
+                if (response?.Status == 429)
+                {
+                    _logger.LogWarning("Rate limited (429) by {Url} via Playwright", url);
+                    throw new HttpRequestException($"Rate limited (429): {url}", null, System.Net.HttpStatusCode.TooManyRequests);
+                }
 
                 // Ожидание, пока сеть не станет бездействующей (для AJAX/SPA)
                 await page.WaitForLoadStateAsync(LoadState.NetworkIdle, new PageWaitForLoadStateOptions
@@ -175,10 +310,13 @@ public sealed class HtmlService : IAsyncDisposable
                 // context автоматически закроется при await using
             }
         }
+        catch (HttpRequestException ex) when (ex.StatusCode == System.Net.HttpStatusCode.TooManyRequests)
+        {
+            throw;
+        }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Playwright failed for {Url}, falling back to HttpClient", url);
-            // Пробуем пересоздать браузер при ошибке (возможно, он упал)
             await CloseBrowserAsync();
             return await GetHtmlAsync(url);
         }
@@ -211,43 +349,34 @@ public sealed class HtmlService : IAsyncDisposable
     {
         url = CleanUrl(url);
         _logger.LogInformation("Fetching with HttpClient: {Url}", url);
-        
+
         await ApplyRateLimitDelay();
 
-        using var client = _httpClientFactory.CreateClient();
-        client.Timeout = TimeSpan.FromSeconds(_options.HttpTimeoutSeconds);
-        client.DefaultRequestHeaders.UserAgent.ParseAdd("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36");
-        client.DefaultRequestHeaders.Accept.ParseAdd("text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8");
-        client.DefaultRequestHeaders.AcceptLanguage.ParseAdd("ru-RU,ru;q=0.9,en-US;q=0.8,en;q=0.7");
+        try
+        {
+            return await FetchHtmlWithHttpClientAsync(url, null);
+        }
+        catch (Exception directEx)
+        {
+            _logger.LogWarning(directEx, "Direct request failed for {Url}, trying proxies", url);
+        }
 
-        var response = await client.GetAsync(url);
-        response.EnsureSuccessStatusCode();
-
-        // Читаем как байты, чтобы избежать ошибки некорректной кодировки
-        var byteArray = await response.Content.ReadAsByteArrayAsync();
-    
-        // Пытаемся определить кодировку из заголовка, но с запасным вариантом
-        Encoding encoding = null;
-        if (response.Content.Headers.ContentType?.CharSet != null)
+        foreach (var proxy in LoadProxyUris())
         {
             try
             {
-                encoding = Encoding.GetEncoding(response.Content.Headers.ContentType.CharSet);
+                _logger.LogInformation("Retrying with proxy {Proxy} for {Url}", proxy, url);
+                var content = await FetchHtmlWithHttpClientAsync(url, proxy);
+                _logger.LogInformation("HttpClient via proxy: received {Length} chars", content.Length);
+                return content;
             }
-            catch (ArgumentException)
+            catch (Exception proxyEx)
             {
-                _logger.LogWarning("Invalid charset '{Charset}' received, fallback to UTF-8", 
-                    response.Content.Headers.ContentType.CharSet);
+                _logger.LogWarning(proxyEx, "Proxy {Proxy} failed for {Url}", proxy, url);
             }
         }
-    
-        encoding ??= Encoding.UTF8;
-    
-        // Дополнительно: можно попробовать обнаружить кодировку по BOM или содержимому
-        var content = encoding.GetString(byteArray);
-    
-        _logger.LogInformation("HttpClient: received {Length} chars", content.Length);
-        return content;
+
+        throw new InvalidOperationException($"Unable to fetch {url} with direct connection or proxies");
     }
 
     public async Task<string> GetHtmlAdaptiveAsync(string url)
