@@ -12,6 +12,8 @@ import {
 } from 'react-native';
 import { useAuth } from '@/contexts/AuthContext';
 import { router } from 'expo-router';
+import { Feather } from '@expo/vector-icons';
+import { SafeAreaView } from 'react-native-safe-area-context';
 
 export default function LoginScreen() {
     const [login, setLogin] = useState('');
@@ -36,14 +38,19 @@ export default function LoginScreen() {
     };
 
     const navigateToRegister = () => {
-        router.push('/(auth)/register');
+        router.replace('/(auth)/register');
     };
 
     return (
+        <SafeAreaView style={styles.container}>
         <KeyboardAvoidingView
-            style={styles.container}
+            style={styles.flex}
             behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
         >
+            <TouchableOpacity style={styles.backButton} onPress={() => router.canGoBack() ? router.back() : router.replace('/(screens)/profile')}>
+                <Feather name="arrow-left" size={22} color="#4a6fa5" />
+                <Text style={styles.backText}>Назад</Text>
+            </TouchableOpacity>
             <View style={styles.formContainer}>
                 <Text style={styles.title}>Вход</Text>
 
@@ -86,6 +93,7 @@ export default function LoginScreen() {
                 )}
             </View>
         </KeyboardAvoidingView>
+        </SafeAreaView>
     );
 }
 
@@ -93,6 +101,21 @@ const styles = StyleSheet.create({
     container: {
         flex: 1,
         backgroundColor: '#f8f9fa',
+    },
+    flex: {
+        flex: 1,
+    },
+    backButton: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        paddingHorizontal: 16,
+        paddingTop: 8,
+        gap: 6,
+    },
+    backText: {
+        color: '#4a6fa5',
+        fontSize: 16,
+        fontWeight: '600',
     },
     formContainer: {
         flex: 1,

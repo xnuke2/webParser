@@ -1,519 +1,524 @@
-import { ScrollView, StyleSheet, Text, View, TouchableOpacity, ActivityIndicator } from "react-native";
-import { StatusBar } from "expo-status-bar";
-import { SafeAreaView } from "react-native-safe-area-context";
-import { Image } from "expo-image";
-import { useAuth } from '@/contexts/AuthContext';
-import { router } from 'expo-router';
-import { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import {
+    ActivityIndicator,
+    FlatList,
+    Modal,
+    RefreshControl,
+    ScrollView,
+    StyleSheet,
+    Text,
+    TextInput,
+    TouchableOpacity,
+    View,
+} from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import { StatusBar } from 'expo-status-bar';
 import { Feather } from '@expo/vector-icons';
+import { useSites } from '@/contexts/SitesContext';
+import { useAuth } from '@/contexts/AuthContext';
+import { apiService, AnalyzedField, SiteField } from '@/lib/apiService';
+
+type SortOption = 'name-asc' | 'name-desc' | 'id-asc' | 'id-desc';
+
+interface FilterCondition {
+    id: string;
+    fieldNameId: number | null;
+    value: string;
+    valueFrom: string;
+    valueTo: string;
+}
+
+const NUMERIC_FIELD_NAMES = ['Цена', 'Год выпуска', 'Пробег', 'Мощность двигателя', 'Объём двигателя'];
 
 export default function Index() {
-    const { token, signOut, userData, fetchUserInfo, isUserInfoLoading } = useAuth();
-    const [initialLoadDone, setInitialLoadDone] = useState(false);
+    const { token, userData } = useAuth();
+    const { sites, loading, fetchSites, fieldNames, allParsedData, fetchFieldNames, fetchAllParsedData } = useSites();
+    const [expandedId, setExpandedId] = useState<number | null>(null);
+    const [fields, setFields] = useState<Record<number, SiteField[]>>({});
+    const [loadingFields, setLoadingFields] = useState<Record<number, boolean>>({});
+    const [refreshing, setRefreshing] = useState(false);
+    const [searchQuery, setSearchQuery] = useState('');
+    const [sortBy, setSortBy] = useState<SortOption>('name-asc');
+    const [showFilterModal, setShowFilterModal] = useState(false);
+    const [filterConditions, setFilterConditions] = useState<FilterCondition[]>([]);
+    const [pendingConditions, setPendingConditions] = useState<FilterCondition[]>([]);
+    const [showFieldPicker, setShowFieldPicker] = useState<string | null>(null);
 
-    // Загружаем информацию о пользователе при монтировании
     useEffect(() => {
-        if (token && !initialLoadDone) {
-            const timer = setTimeout(() => {
-                fetchUserInfo();
-                setInitialLoadDone(true);
-            }, 1000); // Задержка для избежания конфликтов с AuthContext
-            return () => clearTimeout(timer);
+        fetchSites();
+        fetchFieldNames();
+        fetchAllParsedData();
+    }, [fetchSites, fetchFieldNames, fetchAllParsedData]);
+
+    const filteredAndSortedSites = useMemo(() => {
+        let filtered = [...sites];
+
+        if (searchQuery.trim()) {
+            const query = searchQuery.toLowerCase();
+            filtered = filtered.filter(site =>
+                site.Name.toLowerCase().includes(query) ||
+                site.Url.toLowerCase().includes(query)
+            );
         }
-    }, [token, initialLoadDone]);
 
-    const handleProfilePress = () => {
-        router.push('/(screens)/profile');
-    };
+        if (filterConditions.length > 0) {
+            filtered = filtered.filter(site => {
+                const siteFieldData = fields[site.Id];
+                if (!siteFieldData) return false;
+                return filterConditions.every(condition => {
+                    if (!condition.fieldNameId) return true;
+                    const fieldName = fieldNames.find(f => f.Id === condition.fieldNameId);
+                    if (!fieldName) return true;
+                    const field = siteFieldData.find(f => f.Field.toLowerCase() === fieldName.Name.toLowerCase());
+                    if (!field) return false;
 
-    const handleSitesPress = () => {
-        router.push('/(screens)/sites');
-    };
+                    const isNumeric = NUMERIC_FIELD_NAMES.includes(fieldName.Name);
+                    if (isNumeric) {
+                        const numValue = parseFloat(field.Data.replace(/[^\d.,]/g, '').replace(',', '.'));
+                        if (isNaN(numValue)) return false;
+                        if (condition.valueFrom.trim()) {
+                            const from = parseFloat(condition.valueFrom.replace(',', '.'));
+                            if (!isNaN(from) && numValue < from) return false;
+                        }
+                        if (condition.valueTo.trim()) {
+                            const to = parseFloat(condition.valueTo.replace(',', '.'));
+                            if (!isNaN(to) && numValue > to) return false;
+                        }
+                        return true;
+                    }
 
-    const handleLoginPress = () => {
-        router.push('/(auth)/login');
-    };
+                    if (!condition.value.trim()) return true;
+                    return field.Data.toLowerCase().includes(condition.value.toLowerCase());
+                });
+            });
+        }
 
-    const handleRefreshUserInfo = () => {
-        if (token) {
-            fetchUserInfo();
+        switch (sortBy) {
+            case 'name-asc': filtered.sort((a, b) => a.Name.localeCompare(b.Name)); break;
+            case 'name-desc': filtered.sort((a, b) => b.Name.localeCompare(a.Name)); break;
+            case 'id-asc': filtered.sort((a, b) => a.Id - b.Id); break;
+            case 'id-desc': filtered.sort((a, b) => b.Id - a.Id); break;
+        }
+
+        return filtered;
+    }, [sites, searchQuery, sortBy, filterConditions, fields, fieldNames]);
+
+    const activeFiltersCount = filterConditions.filter(c => c.fieldNameId !== null).length;
+
+    const onRefresh = useCallback(() => {
+        setRefreshing(true);
+        fetchSites().finally(() => setRefreshing(false));
+    }, [fetchSites]);
+
+    const handleCardPress = async (siteId: number) => {
+        if (expandedId === siteId) {
+            setExpandedId(null);
+            return;
+        }
+        setExpandedId(siteId);
+        if (fields[siteId]) return;
+        setLoadingFields(prev => ({ ...prev, [siteId]: true }));
+        try {
+            const data = await apiService.getSiteFields(siteId);
+            setFields(prev => ({ ...prev, [siteId]: data }));
+        } catch {
+            setFields(prev => ({ ...prev, [siteId]: [] }));
+        } finally {
+            setLoadingFields(prev => ({ ...prev, [siteId]: false }));
         }
     };
 
-    const getWelcomeMessage = () => {
-        if (!token) return 'Вы в режиме гостя';
+    const handleSortChange = () => {
+        const options: SortOption[] = ['name-asc', 'name-desc', 'id-asc', 'id-desc'];
+        setSortBy(prev => options[(options.indexOf(prev) + 1) % options.length]);
+    };
 
-        if (userData?.role === 'admin') {
-            return `Добро пожаловать, администратор ${userData.login || ''}`;
-        } else if (userData?.login) {
-            return `Добро пожаловать, ${userData.login}`;
-        } else {
-            return 'Добро пожаловать!';
+    const getSortLabel = () => {
+        switch (sortBy) {
+            case 'name-asc': return 'По названию (А-Я)';
+            case 'name-desc': return 'По названию (Я-А)';
+            case 'id-asc': return 'По ID (↑)';
+            case 'id-desc': return 'По ID (↓)';
         }
+    };
+
+    const openFilterModal = () => {
+        setPendingConditions(filterConditions.length > 0 ? [...filterConditions] : []);
+        setShowFilterModal(true);
+    };
+
+    const addCondition = () => {
+        setPendingConditions(prev => [...prev, { id: Date.now().toString(), fieldNameId: null, value: '', valueFrom: '', valueTo: '' }]);
+    };
+
+    const removeCondition = (id: string) => {
+        setPendingConditions(prev => prev.filter(c => c.id !== id));
+    };
+
+    const updateConditionField = (id: string, fieldNameId: number | null) => {
+        setPendingConditions(prev => prev.map(c => c.id === id ? { ...c, fieldNameId } : c));
+        setShowFieldPicker(null);
+    };
+
+    const updateConditionValue = (id: string, value: string) => {
+        setPendingConditions(prev => prev.map(c => c.id === id ? { ...c, value } : c));
+    };
+
+    const updateConditionValueFrom = (id: string, valueFrom: string) => {
+        setPendingConditions(prev => prev.map(c => c.id === id ? { ...c, valueFrom } : c));
+    };
+
+    const updateConditionValueTo = (id: string, valueTo: string) => {
+        setPendingConditions(prev => prev.map(c => c.id === id ? { ...c, valueTo } : c));
+    };
+
+    const applyFilters = () => {
+        setFilterConditions(pendingConditions.filter(c => c.fieldNameId !== null));
+        setShowFilterModal(false);
+    };
+
+    const resetFilters = () => {
+        setPendingConditions([]);
+        setFilterConditions([]);
+        setShowFilterModal(false);
+    };
+
+    const getUniqueValuesForField = (fieldNameId: number): string[] => {
+        const fieldName = fieldNames.find(f => f.Id === fieldNameId);
+        if (!fieldName) return [];
+        const values = allParsedData
+            .filter(p => p.Field.toLowerCase() === fieldName.Name.toLowerCase())
+            .map(p => p.Data.trim())
+            .filter(Boolean);
+        return [...new Set(values)].sort();
     };
 
     return (
         <SafeAreaView style={styles.container}>
-            <StatusBar barStyle="light-content" />
+            <StatusBar barStyle="dark-content" />
 
-            {/* Шапка */}
             <View style={styles.header}>
-                <Text style={styles.headerTitle}>Главная</Text>
-                <TouchableOpacity onPress={handleProfilePress} style={styles.profileButton}>
-                    {token ? (
-                        <View style={styles.profileButtonContent}>
-                            {userData?.login ? (
-                                <View style={styles.userBadge}>
-                                    <Text style={styles.userInitial}>
-                                        {userData.login.charAt(0).toUpperCase()}
-                                    </Text>
-                                </View>
-                            ) : (
-                                <Feather name="user" size={18} color="white" />
-                            )}
-                            <Text style={styles.profileButtonText}>
-                                {userData?.login || 'Профиль'}
-                            </Text>
-                        </View>
-                    ) : (
-                        <Text style={styles.profileButtonText}>Войти</Text>
-                    )}
-                </TouchableOpacity>
+                <View>
+                    <Text style={styles.title}>Объявления</Text>
+                    <Text style={styles.subtitle}>
+                        {token ? `Пользователь: ${userData?.login || 'без имени'}` : 'Войдите для полного доступа'}
+                    </Text>
+                </View>
             </View>
 
-            <ScrollView contentContainerStyle={styles.scrollContent}>
-                {/* Информация о статусе */}
-                <View style={styles.statusCard}>
-                    <View style={styles.statusHeader}>
-                        <Feather
-                            name={token ? "check-circle" : "user"}
-                            size={24}
-                            color={token ? "#27ae60" : "#7f8c8d"}
-                        />
-                        <Text style={styles.statusTitle}>
-                            {getWelcomeMessage()}
-                        </Text>
-                        {token && (
-                            <TouchableOpacity
-                                onPress={handleRefreshUserInfo}
-                                disabled={isUserInfoLoading}
-                                style={styles.refreshButton}
-                            >
-                                <Feather
-                                    name="refresh-cw"
-                                    size={16}
-                                    color={isUserInfoLoading ? "#bdc3c7" : "#4a6fa5"}
-                                />
-                            </TouchableOpacity>
-                        )}
-                    </View>
-
-                    <Text style={styles.statusText}>
-                        {token
-                            ? 'Вы авторизованы и можете использовать все функции приложения'
-                            : 'Авторизуйтесь для доступа ко всем функциям'}
-                    </Text>
-
-                    {token && isUserInfoLoading ? (
-                        <View style={styles.loadingContainer}>
-                            <ActivityIndicator size="small" color="#4a6fa5" />
-                            <Text style={styles.loadingText}>Загрузка информации...</Text>
-                        </View>
-                    ) : (
-                        token && userData && (
-                            <View style={styles.userInfo}>
-                                {userData.login && (
-                                    <View style={styles.infoRow}>
-                                        <Feather name="user" size={16} color="#4a6fa5" />
-                                        <Text style={styles.infoLabel}>Логин:</Text>
-                                        <Text style={styles.infoValue}>{userData.login}</Text>
-                                    </View>
-                                )}
-
-                                {userData.role && (
-                                    <View style={styles.infoRow}>
-                                        <Feather name={userData.role === 'admin' ? "shield" : "user-check"} size={16} color="#4a6fa5" />
-                                        <Text style={styles.infoLabel}>Роль:</Text>
-                                        <View style={[
-                                            styles.roleBadge,
-                                            userData.role === 'admin' && styles.roleBadgeAdmin
-                                        ]}>
-                                            <Text style={[
-                                                styles.roleText,
-                                                userData.role === 'admin' && styles.roleTextAdmin
-                                            ]}>
-                                                {userData.role}
-                                            </Text>
-                                        </View>
-                                    </View>
-                                )}
-                            </View>
-                        )
-                    )}
+            <View style={styles.controls}>
+                <View style={styles.searchContainer}>
+                    <Feather name="search" size={20} color="#95a5a6" />
+                    <TextInput
+                        style={styles.searchInput}
+                        placeholder="Поиск по названию или URL..."
+                        value={searchQuery}
+                        onChangeText={setSearchQuery}
+                        clearButtonMode="while-editing"
+                    />
+                    {searchQuery ? (
+                        <TouchableOpacity onPress={() => setSearchQuery('')}>
+                            <Feather name="x-circle" size={20} color="#95a5a6" />
+                        </TouchableOpacity>
+                    ) : null}
                 </View>
 
-                {/* Быстрые действия */}
-                <View style={styles.actionsSection}>
-                    <Text style={styles.sectionTitle}>Быстрые действия</Text>
+                <View style={styles.controlsRow}>
+                    <TouchableOpacity style={styles.sortButton} onPress={handleSortChange}>
+                        <Feather name="arrow-down" size={18} color="#4a6fa5" />
+                        <Text style={styles.sortButtonText}>{getSortLabel()}</Text>
+                        <Feather name="chevron-down" size={16} color="#4a6fa5" />
+                    </TouchableOpacity>
 
-                    <View style={styles.actionsGrid}>
-                        <TouchableOpacity
-                            style={[styles.actionCard, !token && styles.actionCardDisabled]}
-                            onPress={handleSitesPress}
-                            disabled={!token}
-                        >
-                            <View style={[styles.actionIcon, styles.sitesIcon]}>
-                                <Feather name="globe" size={24} color="white" />
+                    <TouchableOpacity style={[styles.filterButton, activeFiltersCount > 0 && styles.filterButtonActive]} onPress={openFilterModal}>
+                        <Feather name="filter" size={18} color={activeFiltersCount > 0 ? '#fff' : '#4a6fa5'} />
+                        <Text style={[styles.filterButtonText, activeFiltersCount > 0 && styles.filterButtonTextActive]}>Фильтры</Text>
+                        {activeFiltersCount > 0 && (
+                            <View style={styles.filterBadge}>
+                                <Text style={styles.filterBadgeText}>{activeFiltersCount}</Text>
                             </View>
-                            <Text style={styles.actionTitle}>Сайты</Text>
-                            <Text style={styles.actionDescription}>
-                                {token ? 'Просмотр и управление сайтами' : 'Требуется авторизация'}
-                            </Text>
-                        </TouchableOpacity>
+                        )}
+                    </TouchableOpacity>
+                </View>
+            </View>
 
-                        <TouchableOpacity
-                            style={styles.actionCard}
-                            onPress={handleProfilePress}
-                        >
-                            <View style={[styles.actionIcon, styles.profileIcon]}>
-                                <Feather name="user" size={24} color="white" />
-                            </View>
-                            <Text style={styles.actionTitle}>Профиль</Text>
-                            <Text style={styles.actionDescription}>
-                                {token ? 'Управление профилем' : 'Войти или зарегистрироваться'}
-                            </Text>
-                        </TouchableOpacity>
+            {loading ? (
+                <View style={styles.emptyState}>
+                    <ActivityIndicator size="large" color="#4a6fa5" />
+                    <Text style={styles.emptyText}>Загрузка объявлений...</Text>
+                </View>
+            ) : (
+                <FlatList
+                    data={filteredAndSortedSites}
+                    keyExtractor={item => String(item.Id)}
+                    contentContainerStyle={styles.list}
+                    refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#4a6fa5" />}
+                    renderItem={({ item }) => {
+                        const isExpanded = expandedId === item.Id;
+                        const itemFields = fields[item.Id];
+                        const isLoadingFields = loadingFields[item.Id];
 
-                        {!token && (
+                        return (
                             <TouchableOpacity
-                                style={[styles.actionCard, styles.loginCard]}
-                                onPress={handleLoginPress}
+                                style={[styles.card, isExpanded && styles.cardExpanded]}
+                                onPress={() => handleCardPress(item.Id)}
+                                activeOpacity={0.8}
                             >
-                                <View style={[styles.actionIcon, styles.loginIcon]}>
-                                    <Feather name="log-in" size={24} color="white" />
+                                <View style={styles.cardHeader}>
+                                    <View style={styles.cardTitleRow}>
+                                        <Text style={styles.cardTitle}>{item.Name}</Text>
+                                        <Text style={styles.cardId}>#{item.Id}</Text>
+                                    </View>
+                                    <View style={styles.cardUrlRow}>
+                                        <Feather name="link" size={12} color="#4a6fa5" />
+                                        <Text style={styles.cardUrl} numberOfLines={1}>{item.Url}</Text>
+                                        <Feather name={isExpanded ? 'chevron-up' : 'chevron-down'} size={16} color="#8aa0b8" />
+                                    </View>
                                 </View>
-                                <Text style={styles.actionTitle}>Вход</Text>
-                                <Text style={styles.actionDescription}>
-                                    Войдите для доступа ко всем функциям
-                                </Text>
+
+                                {isExpanded && (
+                                    <View style={styles.expandedContent}>
+                                        {isLoadingFields ? (
+                                            <ActivityIndicator size="small" color="#4a6fa5" />
+                                        ) : itemFields && itemFields.length > 0 ? (
+                                            itemFields.map((f, index) => (
+                                                <View key={index} style={styles.fieldRow}>
+                                                    <Text style={styles.fieldName}>{f.Field}</Text>
+                                                    <Text style={styles.fieldValue}>{f.Data}</Text>
+                                                </View>
+                                            ))
+                                        ) : (
+                                            <Text style={styles.noFields}>Нет параметров</Text>
+                                        )}
+                                    </View>
+                                )}
                             </TouchableOpacity>
-                        )}
-                    </View>
-                </View>
-
-                {/* Информационный блок */}
-                <View style={styles.infoCard}>
-                    <View style={styles.infoHeader}>
-                        <Feather name="info" size={20} color="#4a6fa5" />
-                        <Text style={styles.infoCardTitle}>О приложении</Text>
-                    </View>
-                    <Text style={styles.infoCardText}>
-                        Это приложение для мониторинга и анализа веб-сайтов.
-                        {token ? ' Используйте вкладки ниже для навигации.' : ' Авторизуйтесь для начала работы.'}
-                    </Text>
-
-                    {token && userData?.role === 'admin' && (
-                        <View style={styles.adminNote}>
-                            <Feather name="shield" size={16} color="#e74c3c" />
-                            <Text style={styles.adminNoteText}>
-                                У вас есть права администратора
-                            </Text>
+                        );
+                    }}
+                    ListEmptyComponent={(
+                        <View style={styles.emptyState}>
+                            <Feather name="file-text" size={36} color="#8aa0b8" />
+                            <Text style={styles.emptyTitle}>Объявлений пока нет</Text>
+                            <Text style={styles.emptyText}>Создайте первое объявление через вкладку добавления</Text>
                         </View>
                     )}
-                </View>
+                />
+            )}
 
-                {/* Декоративный блок с кошкой */}
-                <View style={styles.decorativeSection}>
-                    <Text style={styles.decorativeTitle}>Наш талисман</Text>
-                    <View style={styles.imageContainer}>
-                        <Image
-                            style={{ width: 200, height: 200 }}
-                            source={require('@/assets/images/android-icon-monochrome.png')}
-                            contentFit="contain"
-                        />
+            <Modal animationType="slide" transparent visible={showFilterModal} onRequestClose={() => setShowFilterModal(false)}>
+                <View style={styles.modalOverlay}>
+                    <View style={styles.filterModalContent}>
+                        <Text style={styles.modalTitle}>Фильтры</Text>
+
+                        <ScrollView style={styles.filterScroll} showsVerticalScrollIndicator={false}>
+                            {pendingConditions.map((condition) => (
+                                <View key={condition.id} style={styles.conditionRow}>
+                                    <TouchableOpacity
+                                        style={styles.fieldPickerButton}
+                                        onPress={() => setShowFieldPicker(showFieldPicker === condition.id ? null : condition.id)}
+                                    >
+                                        <Text style={[styles.fieldPickerText, !condition.fieldNameId && styles.fieldPickerPlaceholder]}>
+                                            {condition.fieldNameId
+                                                ? fieldNames.find(f => f.Id === condition.fieldNameId)?.Name ?? 'Параметр'
+                                                : 'Выберите параметр'}
+                                        </Text>
+                                        <Feather name="chevron-down" size={14} color="#95a5a6" />
+                                    </TouchableOpacity>
+
+                                    {(() => {
+                                        const fieldName = fieldNames.find(f => f.Id === condition.fieldNameId);
+                                        const isNumeric = fieldName && NUMERIC_FIELD_NAMES.includes(fieldName.Name);
+                                        const uniqueValues = condition.fieldNameId ? getUniqueValuesForField(condition.fieldNameId) : [];
+                                        const hasComboValues = !isNumeric && uniqueValues.length > 0;
+
+                                        return isNumeric ? (
+                                            <View style={styles.rangeRow}>
+                                                <TextInput
+                                                    style={[styles.conditionValueInput, styles.rangeInput]}
+                                                    placeholder="От"
+                                                    value={condition.valueFrom}
+                                                    onChangeText={(v) => updateConditionValueFrom(condition.id, v)}
+                                                    keyboardType="numeric"
+                                                />
+                                                <Text style={styles.rangeSeparator}>—</Text>
+                                                <TextInput
+                                                    style={[styles.conditionValueInput, styles.rangeInput]}
+                                                    placeholder="До"
+                                                    value={condition.valueTo}
+                                                    onChangeText={(v) => updateConditionValueTo(condition.id, v)}
+                                                    keyboardType="numeric"
+                                                />
+                                            </View>
+                                        ) : hasComboValues ? (
+                                            <View style={styles.comboContainer}>
+                                                <TextInput
+                                                    style={styles.conditionValueInput}
+                                                    placeholder="Значение"
+                                                    value={condition.value}
+                                                    onChangeText={(v) => updateConditionValue(condition.id, v)}
+                                                />
+                                                <View style={styles.comboChips}>
+                                                    {uniqueValues.map(val => (
+                                                        <TouchableOpacity
+                                                            key={val}
+                                                            style={[styles.comboChip, condition.value === val && styles.comboChipActive]}
+                                                            onPress={() => updateConditionValue(condition.id, condition.value === val ? '' : val)}
+                                                        >
+                                                            <Text style={[styles.comboChipText, condition.value === val && styles.comboChipTextActive]}>
+                                                                {val}
+                                                            </Text>
+                                                        </TouchableOpacity>
+                                                    ))}
+                                                </View>
+                                            </View>
+                                        ) : (
+                                            <TextInput
+                                                style={styles.conditionValueInput}
+                                                placeholder="Значение"
+                                                value={condition.value}
+                                                onChangeText={(v) => updateConditionValue(condition.id, v)}
+                                            />
+                                        );
+                                    })()}
+
+                                    <TouchableOpacity style={styles.removeConditionButton} onPress={() => removeCondition(condition.id)}>
+                                        <Feather name="x" size={18} color="#e74c3c" />
+                                    </TouchableOpacity>
+
+                                    {showFieldPicker === condition.id && (
+                                        <View style={styles.fieldDropdown}>
+                                            <FlatList
+                                                data={fieldNames.filter(f =>
+                                                    f.Id === condition.fieldNameId ||
+                                                    !pendingConditions.some(c => c.id !== condition.id && c.fieldNameId === f.Id)
+                                                )}
+                                                keyExtractor={(item) => item.Id.toString()}
+                                                renderItem={({ item }) => (
+                                                    <TouchableOpacity
+                                                        style={[styles.fieldDropdownItem, condition.fieldNameId === item.Id && styles.fieldDropdownItemActive]}
+                                                        onPress={() => updateConditionField(condition.id, item.Id)}
+                                                    >
+                                                        <Text style={[styles.fieldDropdownText, condition.fieldNameId === item.Id && styles.fieldDropdownTextActive]}>
+                                                            {item.Name}
+                                                        </Text>
+                                                    </TouchableOpacity>
+                                                )}
+                                                scrollEnabled={false}
+                                            />
+                                        </View>
+                                    )}
+                                </View>
+                            ))}
+
+                            <TouchableOpacity style={styles.addConditionButton} onPress={addCondition}>
+                                <Feather name="plus" size={18} color="#4a6fa5" />
+                                <Text style={styles.addConditionText}>Добавить условие</Text>
+                            </TouchableOpacity>
+                        </ScrollView>
+
+                        <TouchableOpacity style={styles.applyButton} onPress={applyFilters}>
+                            <Text style={styles.applyButtonText}>Применить фильтры</Text>
+                        </TouchableOpacity>
+
+                        <TouchableOpacity style={styles.resetButton} onPress={resetFilters}>
+                            <Text style={styles.resetButtonText}>Сбросить все фильтры</Text>
+                        </TouchableOpacity>
                     </View>
-                    <Text style={styles.decorativeText}>Это кошка - символ нашего приложения</Text>
                 </View>
-            </ScrollView>
+            </Modal>
         </SafeAreaView>
     );
 }
 
 const styles = StyleSheet.create({
-    container: {
-        flex: 1,
-        backgroundColor: '#f8f9fa',
+    container: { flex: 1, backgroundColor: '#f8f9fa' },
+    header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 16 },
+    title: { fontSize: 24, fontWeight: '700', color: '#1f2d3d' },
+    subtitle: { color: '#6c7a89', marginTop: 4 },
+    controls: { paddingHorizontal: 16, paddingBottom: 12, gap: 10 },
+    searchContainer: {
+        flexDirection: 'row', alignItems: 'center', backgroundColor: 'white',
+        borderRadius: 12, paddingHorizontal: 14, paddingVertical: 10,
+        borderWidth: 1, borderColor: '#e0e0e0',
     },
-    header: {
-        flexDirection: 'row',
-        justifyContent: 'space-between',
-        alignItems: 'center',
-        paddingHorizontal: 20,
-        paddingVertical: 16,
-        backgroundColor: 'white',
-        borderBottomWidth: 1,
-        borderBottomColor: '#e0e0e0',
-        elevation: 2,
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: 1 },
-        shadowOpacity: 0.1,
-        shadowRadius: 2,
+    searchInput: { flex: 1, marginLeft: 10, fontSize: 15, color: '#2c3e50', padding: 0 },
+    controlsRow: { flexDirection: 'row', alignItems: 'center' },
+    sortButton: {
+        flex: 1, flexDirection: 'row', alignItems: 'center', backgroundColor: 'white',
+        borderRadius: 12, paddingHorizontal: 14, paddingVertical: 10,
+        borderWidth: 1, borderColor: '#e0e0e0', marginRight: 8,
     },
-    headerTitle: {
-        fontSize: 22,
-        fontWeight: 'bold',
-        color: '#2c3e50',
+    sortButtonText: { flex: 1, marginLeft: 8, fontSize: 13, color: '#4a6fa5', fontWeight: '500' },
+    filterButton: {
+        flexDirection: 'row', alignItems: 'center', backgroundColor: 'white',
+        borderRadius: 12, paddingHorizontal: 14, paddingVertical: 10,
+        borderWidth: 1, borderColor: '#e0e0e0',
     },
-    profileButton: {
-        backgroundColor: '#4a6fa5',
-        paddingHorizontal: 16,
-        paddingVertical: 10,
-        borderRadius: 12,
-        minWidth: 100,
+    filterButtonActive: { backgroundColor: '#4a6fa5', borderColor: '#4a6fa5' },
+    filterButtonText: { marginLeft: 6, fontSize: 13, color: '#4a6fa5', fontWeight: '500' },
+    filterButtonTextActive: { color: '#fff' },
+    filterBadge: { marginLeft: 6, backgroundColor: '#fff', borderRadius: 10, width: 20, height: 20, justifyContent: 'center', alignItems: 'center' },
+    filterBadgeText: { fontSize: 11, fontWeight: 'bold', color: '#4a6fa5' },
+    list: { padding: 16, gap: 12 },
+    card: { backgroundColor: 'white', borderRadius: 18, padding: 16, borderWidth: 1, borderColor: '#e8eef5' },
+    cardExpanded: { borderColor: '#4a6fa5' },
+    cardHeader: { gap: 6 },
+    cardTitleRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+    cardTitle: { fontSize: 16, fontWeight: '700', color: '#1f2d3d', flex: 1, marginRight: 8 },
+    cardId: { color: '#8aa0b8', fontSize: 12 },
+    cardUrlRow: { flexDirection: 'row', alignItems: 'center', gap: 4 },
+    cardUrl: { flex: 1, color: '#4a6fa5', fontSize: 12 },
+    expandedContent: { marginTop: 14, borderTopWidth: 1, borderTopColor: '#eef3f8', paddingTop: 12, gap: 8 },
+    fieldRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+    fieldName: { color: '#6c7a89', fontSize: 13, flex: 1 },
+    fieldValue: { color: '#1f2d3d', fontSize: 13, fontWeight: '600', flex: 1, textAlign: 'right' },
+    noFields: { color: '#8aa0b8', textAlign: 'center', fontSize: 13 },
+    emptyState: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 24, gap: 8 },
+    emptyTitle: { fontSize: 18, fontWeight: '700', color: '#1f2d3d' },
+    emptyText: { color: '#6c7a89', textAlign: 'center' },
+    modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', alignItems: 'center', padding: 20 },
+    filterModalContent: { backgroundColor: 'white', borderRadius: 20, width: '100%', maxWidth: 400, maxHeight: '85%', padding: 24 },
+    modalTitle: { fontSize: 18, fontWeight: 'bold', color: '#2c3e50', marginBottom: 16, textAlign: 'center' },
+    filterScroll: { marginBottom: 16 },
+    conditionRow: { marginBottom: 12, position: 'relative' },
+    fieldPickerButton: {
+        flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+        backgroundColor: '#f8f9fa', borderRadius: 10, paddingHorizontal: 14, paddingVertical: 10,
+        borderWidth: 1, borderColor: '#e0e0e0', marginBottom: 8,
     },
-    profileButtonContent: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        justifyContent: 'center',
+    fieldPickerText: { fontSize: 14, color: '#2c3e50' },
+    fieldPickerPlaceholder: { color: '#95a5a6' },
+    conditionValueInput: {
+        backgroundColor: '#f8f9fa', borderRadius: 10, paddingHorizontal: 14, paddingVertical: 10,
+        borderWidth: 1, borderColor: '#e0e0e0', fontSize: 14, color: '#2c3e50', marginBottom: 8,
     },
-    userBadge: {
-        width: 24,
-        height: 24,
-        borderRadius: 12,
-        backgroundColor: 'rgba(255, 255, 255, 0.3)',
-        justifyContent: 'center',
-        alignItems: 'center',
-        marginRight: 8,
+    rangeRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 8 },
+    rangeInput: { flex: 1, marginBottom: 0 },
+    rangeSeparator: { marginHorizontal: 8, fontSize: 16, color: '#95a5a6' },
+    removeConditionButton: { position: 'absolute', top: 8, right: 8, padding: 4 },
+    fieldDropdown: {
+        backgroundColor: 'white', borderRadius: 10, borderWidth: 1, borderColor: '#e0e0e0',
+        marginBottom: 8, shadowColor: '#000', shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.1, shadowRadius: 4, elevation: 4,
     },
-    userInitial: {
-        color: 'white',
-        fontSize: 12,
-        fontWeight: 'bold',
+    fieldDropdownItem: { paddingHorizontal: 14, paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: '#f0f0f0' },
+    fieldDropdownItemActive: { backgroundColor: '#e8f4fc' },
+    fieldDropdownText: { fontSize: 14, color: '#2c3e50' },
+    fieldDropdownTextActive: { color: '#4a6fa5', fontWeight: '600' },
+    addConditionButton: {
+        flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
+        backgroundColor: '#f0f7ff', borderRadius: 10, paddingVertical: 12,
+        borderWidth: 1, borderColor: '#4a6fa5', borderStyle: 'dashed', marginTop: 4,
     },
-    profileButtonText: {
-        color: 'white',
-        fontWeight: '600',
-        fontSize: 14,
-    },
-    scrollContent: {
-        padding: 20,
-        paddingBottom: 40,
-    },
-    statusCard: {
-        backgroundColor: 'white',
-        borderRadius: 16,
-        padding: 20,
-        marginBottom: 20,
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: 2 },
-        shadowOpacity: 0.05,
-        shadowRadius: 8,
-        elevation: 2,
-    },
-    statusHeader: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        marginBottom: 12,
-    },
-    statusTitle: {
-        fontSize: 18,
-        fontWeight: 'bold',
-        color: '#2c3e50',
-        marginLeft: 12,
-        flex: 1,
-    },
-    refreshButton: {
-        padding: 4,
-        marginLeft: 8,
-    },
-    statusText: {
-        fontSize: 14,
-        color: '#7f8c8d',
-        lineHeight: 20,
-        marginBottom: 16,
-    },
-    loadingContainer: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        paddingVertical: 12,
-        backgroundColor: '#f8f9fa',
-        borderRadius: 8,
-        justifyContent: 'center',
-    },
-    loadingText: {
-        marginLeft: 8,
-        fontSize: 14,
-        color: '#7f8c8d',
-    },
-    userInfo: {
-        backgroundColor: '#f8f9fa',
-        borderRadius: 12,
-        padding: 16,
-    },
-    infoRow: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        marginBottom: 12,
-    },
-    infoLabel: {
-        fontSize: 14,
-        color: '#7f8c8d',
-        marginLeft: 8,
-        marginRight: 8,
-        width: 50,
-    },
-    infoValue: {
-        fontSize: 14,
-        color: '#2c3e50',
-        fontWeight: '500',
-        flex: 1,
-    },
-    roleBadge: {
-        backgroundColor: '#e8f4fc',
-        paddingHorizontal: 12,
-        paddingVertical: 4,
-        borderRadius: 12,
-        borderWidth: 1,
-        borderColor: '#4a6fa5',
-    },
-    roleBadgeAdmin: {
-        backgroundColor: '#ffebee',
-        borderColor: '#e74c3c',
-    },
-    roleText: {
-        fontSize: 12,
-        color: '#4a6fa5',
-        fontWeight: '600',
-    },
-    roleTextAdmin: {
-        color: '#e74c3c',
-    },
-    actionsSection: {
-        marginBottom: 20,
-    },
-    sectionTitle: {
-        fontSize: 18,
-        fontWeight: 'bold',
-        color: '#2c3e50',
-        marginBottom: 16,
-    },
-    actionsGrid: {
-        flexDirection: 'row',
-        flexWrap: 'wrap',
-        gap: 12,
-    },
-    actionCard: {
-        backgroundColor: 'white',
-        borderRadius: 16,
-        padding: 20,
-        flex: 1,
-        minWidth: '48%',
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: 2 },
-        shadowOpacity: 0.05,
-        shadowRadius: 8,
-        elevation: 2,
-    },
-    actionCardDisabled: {
-        opacity: 0.6,
-    },
-    actionIcon: {
-        width: 50,
-        height: 50,
-        borderRadius: 25,
-        justifyContent: 'center',
-        alignItems: 'center',
-        marginBottom: 12,
-    },
-    sitesIcon: {
-        backgroundColor: '#4a6fa5',
-    },
-    profileIcon: {
-        backgroundColor: '#27ae60',
-    },
-    loginIcon: {
-        backgroundColor: '#e74c3c',
-    },
-    loginCard: {
-        backgroundColor: '#fff5f5',
-    },
-    actionTitle: {
-        fontSize: 16,
-        fontWeight: '600',
-        color: '#2c3e50',
-        marginBottom: 4,
-    },
-    actionDescription: {
-        fontSize: 12,
-        color: '#7f8c8d',
-        lineHeight: 16,
-    },
-    infoCard: {
-        backgroundColor: '#e8f4fc',
-        borderRadius: 16,
-        padding: 20,
-        marginBottom: 20,
-        borderWidth: 1,
-        borderColor: '#d0e3f4',
-    },
-    infoHeader: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        marginBottom: 12,
-    },
-    infoCardTitle: {
-        fontSize: 16,
-        fontWeight: '600',
-        color: '#2c3e50',
-        marginLeft: 8,
-    },
-    infoCardText: {
-        fontSize: 14,
-        color: '#34495e',
-        lineHeight: 20,
-        marginBottom: 12,
-    },
-    adminNote: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        backgroundColor: 'rgba(231, 76, 60, 0.1)',
-        padding: 8,
-        borderRadius: 8,
-        marginTop: 8,
-    },
-    adminNoteText: {
-        fontSize: 12,
-        color: '#e74c3c',
-        fontWeight: '500',
-        marginLeft: 8,
-    },
-    decorativeSection: {
-        backgroundColor: 'white',
-        borderRadius: 16,
-        padding: 20,
-        alignItems: 'center',
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: 2 },
-        shadowOpacity: 0.05,
-        shadowRadius: 8,
-        elevation: 2,
-    },
-    decorativeTitle: {
-        fontSize: 16,
-        fontWeight: '600',
-        color: '#2c3e50',
-        marginBottom: 12,
-    },
-    imageContainer: {
-        width: 200,
-        height: 200,
-        justifyContent: 'center',
-        alignItems: 'center',
-        marginBottom: 12,
-    },
-    decorativeText: {
-        fontSize: 14,
-        color: '#7f8c8d',
-        fontStyle: 'italic',
-    },
+    addConditionText: { marginLeft: 8, fontSize: 14, color: '#4a6fa5', fontWeight: '500' },
+    applyButton: { backgroundColor: '#4a6fa5', borderRadius: 12, padding: 16, alignItems: 'center', marginBottom: 10 },
+    applyButtonText: { color: 'white', fontSize: 16, fontWeight: '600' },
+    resetButton: { backgroundColor: '#f8f9fa', borderRadius: 12, padding: 16, alignItems: 'center', borderWidth: 1, borderColor: '#e0e0e0' },
+    resetButtonText: { color: '#e74c3c', fontSize: 16, fontWeight: '500' },
+    comboContainer: { marginBottom: 8 },
+    comboChips: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginBottom: 4 },
+    comboChip: { paddingHorizontal: 12, paddingVertical: 6, borderRadius: 16, backgroundColor: '#f0f0f0', borderWidth: 1, borderColor: '#e0e0e0' },
+    comboChipActive: { backgroundColor: '#4a6fa5', borderColor: '#4a6fa5' },
+    comboChipText: { fontSize: 13, color: '#2c3e50' },
+    comboChipTextActive: { color: '#fff' },
 });

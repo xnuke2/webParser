@@ -1,17 +1,20 @@
 
 import React, { createContext, useContext, useState, useCallback, useEffect } from 'react';
-import { apiService, Site, SiteField, FieldName } from '../lib/apiService';
+import { apiService, Site, SiteField, FieldName, ParsedDataItem } from '../lib/apiService';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 interface SitesContextType {
     sites: Site[];
     favoriteSiteIds: number[];
     fieldNames: FieldName[];
+    allParsedData: ParsedDataItem[];
     loading: boolean;
     error: string | null;
     fetchSites: () => Promise<void>;
     fetchSiteFields: (id: number) => Promise<SiteField[]>;
     fetchFavoriteSites: () => Promise<void>;
     fetchFieldNames: () => Promise<void>;
+    fetchAllParsedData: () => Promise<void>;
     addToFavorites: (siteId: number) => Promise<void>;
     removeFromFavorites: (siteId: number) => Promise<void>;
     isFavorite: (siteId: number) => boolean;
@@ -31,8 +34,12 @@ export const SitesProvider = ({ children }: { children: React.ReactNode }) => {
     const [sites, setSites] = useState<Site[]>([]);
     const [favoriteSiteIds, setFavoriteSiteIds] = useState<number[]>([]);
     const [fieldNames, setFieldNames] = useState<FieldName[]>([]);
+    const [allParsedData, setAllParsedData] = useState<ParsedDataItem[]>([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
+
+    const PARSED_DATA_CACHE_KEY = 'parsedData_cache';
+    const PARSED_DATA_TTL = 30 * 60 * 1000; // 30 минут
 
     const fetchSites = useCallback(async () => {
         setLoading(true);
@@ -64,6 +71,26 @@ export const SitesProvider = ({ children }: { children: React.ReactNode }) => {
             setFieldNames(data);
         } catch (error) {
             console.error('Error fetching field names:', error);
+        }
+    }, []);
+
+    const fetchAllParsedData = useCallback(async () => {
+        try {
+            // Проверяем кэш
+            const cached = await AsyncStorage.getItem(PARSED_DATA_CACHE_KEY);
+            if (cached) {
+                const { data, timestamp } = JSON.parse(cached);
+                if (Date.now() - timestamp < PARSED_DATA_TTL) {
+                    setAllParsedData(data);
+                    return;
+                }
+            }
+            // Загружаем с сервера
+            const data = await apiService.getAllParsedData();
+            setAllParsedData(data);
+            await AsyncStorage.setItem(PARSED_DATA_CACHE_KEY, JSON.stringify({ data, timestamp: Date.now() }));
+        } catch (error) {
+            console.error('Error fetching parsed data:', error);
         }
     }, []);
 
@@ -118,6 +145,7 @@ export const SitesProvider = ({ children }: { children: React.ReactNode }) => {
     useEffect(() => {
         fetchSites();
         fetchFieldNames();
+        fetchAllParsedData();
 
         const checkAndLoadFavorites = async () => {
             const { token } = await apiService.getStoredAuthData();
@@ -134,12 +162,14 @@ export const SitesProvider = ({ children }: { children: React.ReactNode }) => {
             sites,
             favoriteSiteIds,
             fieldNames,
+            allParsedData,
             loading,
             error,
             fetchSites,
             fetchSiteFields,
             fetchFavoriteSites,
             fetchFieldNames,
+            fetchAllParsedData,
             addToFavorites,
             removeFromFavorites,
             isFavorite

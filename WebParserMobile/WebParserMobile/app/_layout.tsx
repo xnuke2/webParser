@@ -15,7 +15,12 @@ export default function RootLayout() {
                 <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
                     <Stack screenOptions={{ headerShown: false }}>
                         <Stack.Screen name="(screens)" />
-                        <Stack.Screen name="(auth)" />
+                        <Stack.Screen
+                            name="(auth)"
+                            options={{
+                                animation: 'slide_from_right',
+                            }}
+                        />
                     </Stack>
                     <StatusBar style={colorScheme === 'dark' ? 'light' : 'dark'} />
                 </ThemeProvider>

@@ -82,19 +82,21 @@ export default function ProfileScreen() {
         router.push('/(screens)');
     };
 
+    const isAdmin = userData?.role === 'Администратор';
+
     const getRoleIcon = () => {
         if (!userData?.role) return 'user';
-        return userData.role === 'admin' ? 'shield' : 'user-check';
+        return isAdmin ? 'shield' : 'user-check';
     };
 
     const getRoleColor = () => {
         if (!userData?.role) return '#4a6fa5';
-        return userData.role === 'admin' ? '#e74c3c' : '#27ae60';
+        return isAdmin ? '#e74c3c' : '#27ae60';
     };
 
     const getRoleDescription = () => {
         if (!userData?.role) return 'Пользователь';
-        return userData.role === 'admin' ? 'Администратор' : 'Обычный пользователь';
+        return isAdmin ? 'Администратор' : 'Обычный пользователь';
     };
 
     if (isLoading) {
@@ -127,12 +129,7 @@ export default function ProfileScreen() {
             >
                 {/* Шапка профиля */}
                 <View style={styles.header}>
-                    <TouchableOpacity
-                        style={styles.backButton}
-                        onPress={handleGoToHome}
-                    >
-                        <Feather name="arrow-left" size={24} color="#4a6fa5" />
-                    </TouchableOpacity>
+                    <View style={styles.headerPlaceholder} />
                     <Text style={styles.title}>Профиль</Text>
                     <View style={styles.headerPlaceholder} />
                 </View>
@@ -147,7 +144,7 @@ export default function ProfileScreen() {
                                     <Text style={styles.avatarText}>
                                         {userData?.login?.charAt(0)?.toUpperCase() || 'U'}
                                     </Text>
-                                    {userData?.role === 'admin' && (
+                                    {isAdmin && (
                                         <View style={styles.adminBadge}>
                                             <Feather name="shield" size={12} color="white" />
                                         </View>
@@ -176,17 +173,6 @@ export default function ProfileScreen() {
                                 <View style={styles.sectionHeader}>
                                     <Feather name="info" size={20} color="#4a6fa5" />
                                     <Text style={styles.sectionTitle}>Информация</Text>
-                                    <TouchableOpacity
-                                        onPress={loadUserInfo}
-                                        disabled={isUserInfoLoading}
-                                        style={styles.refreshInfoButton}
-                                    >
-                                        <Feather
-                                            name="refresh-cw"
-                                            size={16}
-                                            color={isUserInfoLoading ? "#bdc3c7" : "#4a6fa5"}
-                                        />
-                                    </TouchableOpacity>
                                 </View>
 
                                 <View style={styles.infoGrid}>
@@ -213,53 +199,16 @@ export default function ProfileScreen() {
                                                 { backgroundColor: `${getRoleColor()}15` }
                                             ]}>
                                                 <Text style={[styles.roleBadgeText, { color: getRoleColor() }]}>
-                                                    {userData?.role || 'user'}
+                                                    {userData?.role || 'Пользователь'}
                                                 </Text>
                                             </View>
                                         </View>
                                     </View>
-
-                                    <View style={styles.infoItem}>
-                                        <View style={styles.infoIcon}>
-                                            <Feather name="clock" size={16} color="#9b59b6" />
-                                        </View>
-                                        <View style={styles.infoContent}>
-                                            <Text style={styles.infoLabel}>Статус</Text>
-                                            <Text style={styles.infoValue}>Авторизован</Text>
-                                        </View>
-                                    </View>
-
-                                    {lastUpdated && (
-                                        <View style={styles.infoItem}>
-                                            <View style={styles.infoIcon}>
-                                                <Feather name="refresh-cw" size={16} color="#2ecc71" />
-                                            </View>
-                                            <View style={styles.infoContent}>
-                                                <Text style={styles.infoLabel}>Обновлено</Text>
-                                                <Text style={styles.infoValue}>{lastUpdated}</Text>
-                                            </View>
-                                        </View>
-                                    )}
                                 </View>
-
-                                {isUserInfoLoading && (
-                                    <View style={styles.loadingInfo}>
-                                        <ActivityIndicator size="small" color="#4a6fa5" />
-                                        <Text style={styles.loadingInfoText}>Обновление информации...</Text>
-                                    </View>
-                                )}
                             </View>
 
                             {/* Кнопки действий */}
                             <View style={styles.actionButtons}>
-                                <TouchableOpacity
-                                    style={[styles.button, styles.sitesButton]}
-                                    onPress={handleGoToSites}
-                                >
-                                    <Feather name="globe" size={18} color="white" />
-                                    <Text style={styles.sitesButtonText}>Перейти к сайтам</Text>
-                                </TouchableOpacity>
-
                                 <TouchableOpacity
                                     style={[styles.button, styles.logoutButton]}
                                     onPress={handleLogout}
@@ -329,7 +278,7 @@ export default function ProfileScreen() {
                 </View>
 
                 {/* Дополнительная информация для авторизованных пользователей */}
-                {token && userData?.role === 'admin' && (
+                {token && isAdmin && (
                     <View style={styles.adminSection}>
                         <View style={styles.sectionHeader}>
                             <Feather name="shield" size={20} color="#e74c3c" />
@@ -496,27 +445,24 @@ const styles = StyleSheet.create({
         marginLeft: 8,
     },
     infoGrid: {
-        flexDirection: 'row',
-        flexWrap: 'wrap',
-        gap: 12,
+        flexDirection: 'column',
+        gap: 10,
     },
     infoItem: {
         flexDirection: 'row',
         alignItems: 'center',
         backgroundColor: '#f8f9fa',
-        padding: 12,
+        padding: 14,
         borderRadius: 12,
-        flex: 1,
-        minWidth: '48%',
     },
     infoIcon: {
-        width: 32,
-        height: 32,
-        borderRadius: 16,
+        width: 36,
+        height: 36,
+        borderRadius: 18,
         backgroundColor: 'white',
         justifyContent: 'center',
         alignItems: 'center',
-        marginRight: 12,
+        marginRight: 14,
         shadowColor: '#000',
         shadowOffset: { width: 0, height: 1 },
         shadowOpacity: 0.1,
@@ -532,18 +478,18 @@ const styles = StyleSheet.create({
         marginBottom: 2,
     },
     infoValue: {
-        fontSize: 14,
+        fontSize: 15,
         color: '#2c3e50',
         fontWeight: '500',
     },
     roleBadge: {
         alignSelf: 'flex-start',
-        paddingHorizontal: 8,
+        paddingHorizontal: 10,
         paddingVertical: 4,
         borderRadius: 6,
     },
     roleBadgeText: {
-        fontSize: 12,
+        fontSize: 13,
         fontWeight: '600',
     },
     loadingInfo: {

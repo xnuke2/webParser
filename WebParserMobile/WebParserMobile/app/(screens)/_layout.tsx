@@ -1,6 +1,6 @@
 // app/(screens)/_layout.tsx
 import { Tabs, useRouter, useSegments } from 'expo-router';
-import React, { useEffect } from 'react';
+import React, { useEffect, useMemo } from 'react';
 import { useColorScheme } from "@/hooks/use-color-scheme";
 import { Colors } from "@/constants/theme";
 import { HapticTab } from "@/app-example/components/haptic-tab";
@@ -8,21 +8,22 @@ import { useAuth } from '@/contexts/AuthContext';
 import { Ionicons } from '@expo/vector-icons';
 import { useAuthInterceptor } from '@/hooks/useAuthInterceptor';
 
-// Компонент для управления вкладкой избранного
 function AuthAwareTabs() {
     const colorScheme = useColorScheme();
-    const { token } = useAuth();
+    const { token, userData } = useAuth();
     const router = useRouter();
     const segments = useSegments();
 
-    // Используем интерцептор для автоматического обновления токенов
     useAuthInterceptor();
 
-    // При изменении токена проверяем текущий экран
+    const canAddSite = useMemo(() => {
+        if (!token) return false;
+        const role = userData?.role;
+        return role === 'Администратор' || role === 'Редактор';
+    }, [token, userData?.role]);
+
     useEffect(() => {
         if (!token && segments.includes('favorites')) {
-            // Если пользователь вышел и находится на экране избранного,
-            // перенаправляем на главную
             router.replace('/(screens)');
         }
     }, [token, segments]);
@@ -38,24 +39,29 @@ function AuthAwareTabs() {
                     backgroundColor: colorScheme === 'dark' ? '#000000' : '#ffffff',
                     borderTopColor: colorScheme === 'dark' ? '#333333' : '#e0e0e0',
                 },
+                animation: 'shift',
             }}>
             <Tabs.Screen
                 name="index"
                 options={{
-                    title: 'Главная',
+                    title: 'Объявления',
                     tabBarIcon: ({ color, size }) => (
-                        <Ionicons name="home" size={size} color={color} />
+                        <Ionicons name="list" size={size} color={color} />
                     ),
                 }}
             />
             <Tabs.Screen
-                name="sites"
-                options={{
-                    title: 'Сайты',
+                name="add-site"
+                options={canAddSite ? {
+                    title: 'Добавить',
                     tabBarIcon: ({ color, size }) => (
-                        <Ionicons name="globe-outline" size={size} color={color} />
+                        <Ionicons name="add-circle-outline" size={size} color={color} />
                     ),
-                }}
+                } : { href: null }}
+            />
+            <Tabs.Screen
+                name="sites"
+                options={{ href: null }}
             />
             <Tabs.Screen
                 name="profile"

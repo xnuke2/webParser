@@ -36,7 +36,11 @@ interface FilterCondition {
     id: string;
     fieldNameId: number | null;
     value: string;
+    valueFrom: string;
+    valueTo: string;
 }
+
+const NUMERIC_FIELD_NAMES = ['Цена', 'Год выпуска', 'Пробег', 'Мощность двигателя', 'Объём двигателя'];
 
 export default function Sites() {
     const [refreshing, setRefreshing] = useState(false);
@@ -61,6 +65,7 @@ export default function Sites() {
         sites,
         favoriteSiteIds,
         fieldNames,
+        allParsedData,
         loading,
         error,
         fetchSites,
@@ -121,6 +126,22 @@ export default function Sites() {
                     if (!fieldName) return true;
                     const field = fields.find(f => f.Field.toLowerCase() === fieldName.Name.toLowerCase());
                     if (!field) return false;
+
+                    const isNumeric = NUMERIC_FIELD_NAMES.includes(fieldName.Name);
+                    if (isNumeric) {
+                        const numValue = parseFloat(field.Data.replace(/[^\d.,]/g, '').replace(',', '.'));
+                        if (isNaN(numValue)) return false;
+                        if (condition.valueFrom.trim()) {
+                            const from = parseFloat(condition.valueFrom.replace(',', '.'));
+                            if (!isNaN(from) && numValue < from) return false;
+                        }
+                        if (condition.valueTo.trim()) {
+                            const to = parseFloat(condition.valueTo.replace(',', '.'));
+                            if (!isNaN(to) && numValue > to) return false;
+                        }
+                        return true;
+                    }
+
                     if (!condition.value.trim()) return true;
                     return field.Data.toLowerCase().includes(condition.value.toLowerCase());
                 });
@@ -156,7 +177,9 @@ export default function Sites() {
         setPendingConditions(prev => [...prev, {
             id: Date.now().toString(),
             fieldNameId: null,
-            value: ''
+            value: '',
+            valueFrom: '',
+            valueTo: '',
         }]);
     };
 
@@ -173,6 +196,14 @@ export default function Sites() {
         setPendingConditions(prev => prev.map(c => c.id === id ? { ...c, value } : c));
     };
 
+    const updateConditionValueFrom = (id: string, valueFrom: string) => {
+        setPendingConditions(prev => prev.map(c => c.id === id ? { ...c, valueFrom } : c));
+    };
+
+    const updateConditionValueTo = (id: string, valueTo: string) => {
+        setPendingConditions(prev => prev.map(c => c.id === id ? { ...c, valueTo } : c));
+    };
+
     const applyFilters = () => {
         setFilterConditions(pendingConditions.filter(c => c.fieldNameId !== null));
         setShowFilterModal(false);
@@ -182,6 +213,16 @@ export default function Sites() {
         setPendingConditions([]);
         setFilterConditions([]);
         setShowFilterModal(false);
+    };
+
+    const getUniqueValuesForField = (fieldNameId: number): string[] => {
+        const fieldName = fieldNames.find(f => f.Id === fieldNameId);
+        if (!fieldName) return [];
+        const values = allParsedData
+            .filter(p => p.Field.toLowerCase() === fieldName.Name.toLowerCase())
+            .map(p => p.Data.trim())
+            .filter(Boolean);
+        return [...new Set(values)].sort();
     };
 
     const extractDomainFromUrl = (url: string): string => {
@@ -616,13 +657,61 @@ export default function Sites() {
                                         <Feather name="chevron-down" size={14} color="#95a5a6" />
                                     </TouchableOpacity>
 
-                                    <TextInput
-                                        style={styles.conditionValueInput}
-                                        placeholder="Значение"
-                                        value={condition.value}
-                                        onChangeText={(v) => updateConditionValue(condition.id, v)}
-                                    />
+                                    {(() => {
+                                        const fieldName = fieldNames.find(f => f.Id === condition.fieldNameId);
+                                        const isNumeric = fieldName && NUMERIC_FIELD_NAMES.includes(fieldName.Name);
+                                        const uniqueValues = condition.fieldNameId ? getUniqueValuesForField(condition.fieldNameId) : [];
+                                        const hasComboValues = !isNumeric && uniqueValues.length > 0;
 
+                                        return isNumeric ? (
+                                            <View style={styles.rangeRow}>
+                                                <TextInput
+                                                    style={[styles.conditionValueInput, styles.rangeInput]}
+                                                    placeholder="От"
+                                                    value={condition.valueFrom}
+                                                    onChangeText={(v) => updateConditionValueFrom(condition.id, v)}
+                                                    keyboardType="numeric"
+                                                />
+                                                <Text style={styles.rangeSeparator}>—</Text>
+                                                <TextInput
+                                                    style={[styles.conditionValueInput, styles.rangeInput]}
+                                                    placeholder="До"
+                                                    value={condition.valueTo}
+                                                    onChangeText={(v) => updateConditionValueTo(condition.id, v)}
+                                                    keyboardType="numeric"
+                                                />
+                                            </View>
+                                        ) : hasComboValues ? (
+                                            <View style={styles.comboContainer}>
+                                                <TextInput
+                                                    style={styles.conditionValueInput}
+                                                    placeholder="Значение"
+                                                    value={condition.value}
+                                                    onChangeText={(v) => updateConditionValue(condition.id, v)}
+                                                />
+                                                <View style={styles.comboChips}>
+                                                    {uniqueValues.map(val => (
+                                                        <TouchableOpacity
+                                                            key={val}
+                                                            style={[styles.comboChip, condition.value === val && styles.comboChipActive]}
+                                                            onPress={() => updateConditionValue(condition.id, condition.value === val ? '' : val)}
+                                                        >
+                                                            <Text style={[styles.comboChipText, condition.value === val && styles.comboChipTextActive]}>
+                                                                {val}
+                                                            </Text>
+                                                        </TouchableOpacity>
+                                                    ))}
+                                                </View>
+                                            </View>
+                                        ) : (
+                                            <TextInput
+                                                style={styles.conditionValueInput}
+                                                placeholder="Значение"
+                                                value={condition.value}
+                                                onChangeText={(v) => updateConditionValue(condition.id, v)}
+                                            />
+                                        );
+                                    })()}
                                     <TouchableOpacity style={styles.removeConditionButton} onPress={() => removeCondition(condition.id)}>
                                         <Feather name="x" size={18} color="#e74c3c" />
                                     </TouchableOpacity>
@@ -630,7 +719,10 @@ export default function Sites() {
                                     {showFieldPicker === condition.id && (
                                         <View style={styles.fieldDropdown}>
                                             <FlatList
-                                                data={fieldNames}
+                                                data={fieldNames.filter(f =>
+                                                    f.Id === condition.fieldNameId ||
+                                                    !pendingConditions.some(c => c.id !== condition.id && c.fieldNameId === f.Id)
+                                                )}
                                                 keyExtractor={(item) => item.Id.toString()}
                                                 renderItem={({ item }) => (
                                                     <TouchableOpacity
@@ -1121,6 +1213,20 @@ const styles = StyleSheet.create({
         color: '#2c3e50',
         marginBottom: 8,
     },
+    rangeRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        marginBottom: 8,
+    },
+    rangeInput: {
+        flex: 1,
+        marginBottom: 0,
+    },
+    rangeSeparator: {
+        marginHorizontal: 8,
+        fontSize: 16,
+        color: '#95a5a6',
+    },
     removeConditionButton: {
         position: 'absolute',
         top: 8,
@@ -1198,6 +1304,34 @@ const styles = StyleSheet.create({
         color: '#e74c3c',
         fontSize: 16,
         fontWeight: '500',
+    },
+    comboContainer: {
+        marginBottom: 8,
+    },
+    comboChips: {
+        flexDirection: 'row',
+        flexWrap: 'wrap',
+        gap: 6,
+        marginBottom: 4,
+    },
+    comboChip: {
+        paddingHorizontal: 12,
+        paddingVertical: 6,
+        borderRadius: 16,
+        backgroundColor: '#f0f0f0',
+        borderWidth: 1,
+        borderColor: '#e0e0e0',
+    },
+    comboChipActive: {
+        backgroundColor: '#4a6fa5',
+        borderColor: '#4a6fa5',
+    },
+    comboChipText: {
+        fontSize: 13,
+        color: '#2c3e50',
+    },
+    comboChipTextActive: {
+        color: '#fff',
     },
     domainContainer: {
         flexDirection: 'row',

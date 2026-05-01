@@ -50,6 +50,13 @@ export interface AnalyzedField {
     FieldNameId: number | null;
 }
 
+export interface ParsedDataItem {
+    SiteId: number;
+    Field: string;
+    Data: string;
+    UpdatedAt: string;
+}
+
 export interface LoginResponse {
     AccessToken: string;
     RefreshToken: string;
@@ -379,6 +386,42 @@ class ApiService {
 
     async getAnalyzedFields(siteId: number): Promise<AnalyzedField[]> {
         const response = await fetch(`${API_URL}/api/AnalyzedField/site/${siteId}`);
+        if (!response.ok) {
+            throw new Error(`HTTP error! status: ${response.status}`);
+        }
+        return response.json();
+    }
+
+    async createAnalyzedSite(data: { Name: string; Url: string }): Promise<any> {
+        const response = await this.fetchWithTokenRefresh('/api/AnalyzedSite', {
+            method: 'POST',
+            body: JSON.stringify(data),
+        });
+
+        if (!response.ok) {
+            const errorText = await response.text();
+            throw new Error(errorText || `Ошибка при создании сайта: ${response.status}`);
+        }
+
+        return response.json();
+    }
+
+    async createAnalyzedField(data: { Name: string; FieldToGet: string; AnalyzedSiteId: number }): Promise<any> {
+        const response = await this.fetchWithTokenRefresh('/api/AnalyzedField', {
+            method: 'POST',
+            body: JSON.stringify(data),
+        });
+
+        if (!response.ok) {
+            const errorText = await response.text();
+            throw new Error(errorText || `Ошибка при создании поля: ${response.status}`);
+        }
+
+        return response.json();
+    }
+
+    async getAllParsedData(): Promise<ParsedDataItem[]> {
+        const response = await fetch(`${API_URL}/api/ParsedData/all`);
         if (!response.ok) {
             throw new Error(`HTTP error! status: ${response.status}`);
         }
