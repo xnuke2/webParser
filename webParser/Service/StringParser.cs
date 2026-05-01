@@ -192,6 +192,30 @@ public class StringParser
         return null;
     }
 
+    // Extracts only direct text nodes from a cell, ignoring nested block elements (ads, tax hints, etc.)
+    private string ExtractCellText(HtmlNode cell)
+    {
+        var sb = new System.Text.StringBuilder();
+        foreach (var child in cell.ChildNodes)
+        {
+            if (child.NodeType == HtmlNodeType.Text)
+            {
+                var t = System.Net.WebUtility.HtmlDecode(child.InnerText).Trim();
+                if (!string.IsNullOrEmpty(t))
+                    sb.Append(t).Append(" ");
+            }
+            else if (child.NodeType == HtmlNodeType.Element && InlineElements.Contains(child.Name.ToLowerInvariant()))
+            {
+                var t = System.Net.WebUtility.HtmlDecode(child.InnerText).Trim();
+                if (!string.IsNullOrEmpty(t))
+                    sb.Append(t).Append(" ");
+            }
+            // skip block elements (div, span with ads, etc.)
+        }
+        var result = sb.ToString().Trim();
+        return string.IsNullOrEmpty(result) ? ExtractTextWithStructure(cell) : result;
+    }
+
     private string FindByAdjacentText(HtmlDocument doc, string selector)
     {
         var match = Regex.Match(selector, @"text=['""]([^'""]+)['""]");
@@ -210,7 +234,7 @@ public class StringParser
                         var valueCell = row.SelectSingleNode(".//td[@data-ftid='value']")
                                      ?? row.SelectNodes(".//td")?.Skip(1).FirstOrDefault();
                         if (valueCell != null)
-                            return ExtractTextWithStructure(valueCell);
+                            return ExtractCellText(valueCell);
                     }
 
                     // dt/dd pattern
