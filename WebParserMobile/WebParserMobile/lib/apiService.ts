@@ -3,7 +3,7 @@ import * as SecureStore from 'expo-secure-store';
 import { Platform } from 'react-native';
 
 const API_URL = Platform.select({
-    ios: 'http://localhost:8088',
+    ios: 'http://192.168.31.54:8088',
     android: 'http://172.20.10.3:8088',
     web: 'http://localhost:8088',
 });
@@ -406,7 +406,7 @@ class ApiService {
         return response.json();
     }
 
-    async createAnalyzedField(data: { Name: string; FieldToGet: string; AnalyzedSiteId: number }): Promise<any> {
+    async createAnalyzedField(data: { Name: string; FieldToGet: string; AnalyzedSiteId: number; FieldNameId?: number }): Promise<any> {
         const response = await this.fetchWithTokenRefresh('/api/AnalyzedField', {
             method: 'POST',
             body: JSON.stringify(data),

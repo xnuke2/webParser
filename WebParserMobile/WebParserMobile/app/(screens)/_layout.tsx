@@ -39,7 +39,10 @@ function AuthAwareTabs() {
                     backgroundColor: colorScheme === 'dark' ? '#000000' : '#ffffff',
                     borderTopColor: colorScheme === 'dark' ? '#333333' : '#e0e0e0',
                 },
-                animation: 'shift',
+                sceneStyle: {
+                    backgroundColor: colorScheme === 'dark' ? '#000000' : '#f8f9fa',
+                },
+                animation: 'fade',
             }}>
             <Tabs.Screen
                 name="index"

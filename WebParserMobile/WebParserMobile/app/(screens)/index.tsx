@@ -11,7 +11,7 @@ import {
     TouchableOpacity,
     View,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
 import { Feather } from '@expo/vector-icons';
 import { useSites } from '@/contexts/SitesContext';
@@ -31,6 +31,7 @@ interface FilterCondition {
 const NUMERIC_FIELD_NAMES = ['Цена', 'Год выпуска', 'Пробег', 'Мощность двигателя', 'Объём двигателя'];
 
 export default function Index() {
+    const insets = useSafeAreaInsets();
     const { token, userData } = useAuth();
     const { sites, loading, fetchSites, fieldNames, allParsedData, fetchFieldNames, fetchAllParsedData } = useSites();
     const [expandedId, setExpandedId] = useState<number | null>(null);
@@ -195,7 +196,7 @@ export default function Index() {
 
     return (
         <SafeAreaView style={styles.container}>
-            <StatusBar barStyle="dark-content" />
+            <StatusBar style="dark" />
 
             <View style={styles.header}>
                 <View>
@@ -212,6 +213,7 @@ export default function Index() {
                     <TextInput
                         style={styles.searchInput}
                         placeholder="Поиск по названию или URL..."
+                        placeholderTextColor="#95a5a6"
                         value={searchQuery}
                         onChangeText={setSearchQuery}
                         clearButtonMode="while-editing"
@@ -307,7 +309,7 @@ export default function Index() {
 
             <Modal animationType="slide" transparent visible={showFilterModal} onRequestClose={() => setShowFilterModal(false)}>
                 <View style={styles.modalOverlay}>
-                    <View style={styles.filterModalContent}>
+                    <View style={[styles.filterModalContent, { paddingBottom: Math.max(insets.bottom, 24) }]}>
                         <Text style={styles.modalTitle}>Фильтры</Text>
 
                         <ScrollView style={styles.filterScroll} showsVerticalScrollIndicator={false}>

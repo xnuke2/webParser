@@ -72,6 +72,7 @@ export default function RegisterScreen() {
                 <TextInput
                     style={styles.input}
                     placeholder="Логин"
+                    placeholderTextColor="#95a5a6"
                     value={login}
                     onChangeText={setLogin}
                     autoCapitalize="none"
@@ -81,6 +82,7 @@ export default function RegisterScreen() {
                 <TextInput
                     style={styles.input}
                     placeholder="Пароль"
+                    placeholderTextColor="#95a5a6"
                     value={password}
                     onChangeText={setPassword}
                     secureTextEntry
@@ -90,6 +92,7 @@ export default function RegisterScreen() {
                 <TextInput
                     style={styles.input}
                     placeholder="Подтвердите пароль"
+                    placeholderTextColor="#95a5a6"
                     value={confirmPassword}
                     onChangeText={setConfirmPassword}
                     secureTextEntry
@@ -161,6 +164,7 @@ const styles = StyleSheet.create({
         marginBottom: 16,
         borderWidth: 1,
         borderColor: '#e0e0e0',
+        color: '#2c3e50',
     },
     button: {
         backgroundColor: '#4a6fa5',

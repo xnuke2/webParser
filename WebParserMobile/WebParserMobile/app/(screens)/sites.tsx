@@ -1,5 +1,5 @@
 
-import { SafeAreaView } from "react-native-safe-area-context";
+import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import {
     ActivityIndicator,
     Alert,
@@ -43,6 +43,7 @@ interface FilterCondition {
 const NUMERIC_FIELD_NAMES = ['Цена', 'Год выпуска', 'Пробег', 'Мощность двигателя', 'Объём двигателя'];
 
 export default function Sites() {
+    const insets = useSafeAreaInsets();
     const [refreshing, setRefreshing] = useState(false);
     const [searchQuery, setSearchQuery] = useState('');
     const [sortBy, setSortBy] = useState<SortOption>('name-asc');
@@ -639,7 +640,7 @@ export default function Sites() {
                 onRequestClose={() => setShowFilterModal(false)}
             >
                 <View style={styles.modalOverlay}>
-                    <View style={styles.filterModalContent}>
+                    <View style={[styles.filterModalContent, { paddingBottom: Math.max(insets.bottom, 24) }]}>
                         <Text style={styles.modalTitle}>Фильтры</Text>
 
                         <ScrollView style={styles.filterScroll} showsVerticalScrollIndicator={false}>
@@ -766,7 +767,7 @@ export default function Sites() {
                 onRequestClose={() => setShowUrlModal(false)}
             >
                 <View style={styles.modalOverlay}>
-                    <View style={styles.modalContent}>
+                    <View style={[styles.modalContent, { paddingBottom: Math.max(insets.bottom, 24) }]}>
                         <Text style={styles.modalTitle}>Полный URL сайта</Text>
                         <ScrollView style={styles.urlModalScroll}>
                             <Text style={styles.fullUrlText} selectable={true}>

@@ -91,6 +91,9 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
 
     // Загрузка данных аутентификации при монтировании
     const loadAuthData = useCallback(async () => {
+        // Wait for the app to become interactive before accessing SecureStore.
+        // iOS throws "User interaction is not allowed" if SecureStore is read too early.
+        await new Promise(resolve => setTimeout(resolve, 300));
         try {
             const { token: storedToken, userData: storedUserData } = await apiService.getStoredAuthData();
             console.log('[Auth] Загружены данные из хранилища:', {
@@ -101,12 +104,8 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
             setToken(storedToken);
             setUserData(storedUserData);
 
-            // Если есть токен, загружаем актуальную информацию о пользователе
             if (storedToken) {
-                // Даем время на рендеринг перед запросом
-                setTimeout(() => {
-                    fetchUserInfo();
-                }, 500);
+                await fetchUserInfo();
             }
         } catch (error) {
             console.error('[Auth] Ошибка загрузки данных аутентификации:', error);

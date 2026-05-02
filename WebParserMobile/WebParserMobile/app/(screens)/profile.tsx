@@ -102,6 +102,7 @@ export default function ProfileScreen() {
     if (isLoading) {
         return (
             <SafeAreaView style={styles.container}>
+                <StatusBar style="dark" />
                 <View style={styles.loadingContainer}>
                     <ActivityIndicator size="large" color="#4a6fa5" />
                     <Text style={styles.loadingText}>Загрузка профиля...</Text>
@@ -112,7 +113,7 @@ export default function ProfileScreen() {
 
     return (
         <SafeAreaView style={styles.container}>
-            <StatusBar barStyle="light-content" />
+            <StatusBar style="dark" />
 
             <ScrollView
                 contentContainerStyle={styles.content}
@@ -329,6 +330,7 @@ const styles = StyleSheet.create({
         flex: 1,
         justifyContent: 'center',
         alignItems: 'center',
+        backgroundColor: '#f8f9fa',
     },
     loadingText: {
         marginTop: 12,
