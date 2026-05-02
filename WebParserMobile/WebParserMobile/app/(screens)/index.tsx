@@ -199,7 +199,7 @@ export default function Index() {
 
     return (
         <SafeAreaView style={s.container}>
-            <StatusBar style="dark" />
+            <StatusBar style={isDark ? 'light' : 'dark'} />
 
             <View style={s.header}>
                 <View>

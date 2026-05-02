@@ -1,15 +1,16 @@
 // app/(screens)/_layout.tsx
 import { Tabs, useRouter, useSegments } from 'expo-router';
 import React, { useEffect, useMemo } from 'react';
-import { useColorScheme } from "@/hooks/use-color-scheme";
 import { Colors } from "@/constants/theme";
 import { HapticTab } from "@/app-example/components/haptic-tab";
 import { useAuth } from '@/contexts/AuthContext';
 import { Ionicons } from '@expo/vector-icons';
 import { useAuthInterceptor } from '@/hooks/useAuthInterceptor';
+import { useTheme } from '@/contexts/ThemeContext';
 
 function AuthAwareTabs() {
-    const colorScheme = useColorScheme();
+    const { isDark } = useTheme();
+    const colorScheme = isDark ? 'dark' : 'light';
     const { token, userData } = useAuth();
     const router = useRouter();
     const segments = useSegments();
