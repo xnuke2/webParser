@@ -17,9 +17,9 @@ builder.Services.AddCors(options =>
     options.AddPolicy("Mobile",
         policy =>
         {
-            policy.AllowAnyOrigin()
-                .WithOrigins(
+            policy.WithOrigins(
                     "http://localhost:8081",
+                    "http://192.168.31.54:8081",
                     "http://192.168.31.200:8081")
                 .AllowAnyHeader()
                 .AllowAnyMethod()

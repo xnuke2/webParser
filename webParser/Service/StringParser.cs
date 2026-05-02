@@ -176,7 +176,7 @@ public class StringParser
         var attrMatch = Regex.Match(selector, @"^(\w+)?\[([\w-]+)=['""]([^'""]+)['""]\]");
         if (attrMatch.Success)
         {
-            var tag = attrMatch.Groups[1].Value; // Может быть пустой строкой
+            var tag = attrMatch.Groups[1].Value;
             var attr = attrMatch.Groups[2].Value;
             var value = attrMatch.Groups[3].Value;
 
@@ -189,7 +189,104 @@ public class StringParser
             var node = doc.DocumentNode.SelectSingleNode(xpathExpression);
             return node != null ? ExtractTextWithStructure(node) : null;
         }
+
+        // составной CSS-селектор: div.foo > span.bar, div.foo span.bar
+        if (selector.Contains('>') || (selector.Contains(' ') && !selector.StartsWith("text=") && !selector.StartsWith("label:") && !selector.StartsWith("dt:") && !selector.StartsWith("youla:") && !selector.StartsWith("itemprop:")))
+        {
+            var xpath = ConvertCompoundCssToXPath(selector);
+            if (!string.IsNullOrEmpty(xpath))
+            {
+                var node = doc.DocumentNode.SelectSingleNode(xpath);
+                return node != null ? ExtractTextWithStructure(node) : null;
+            }
+        }
+
         return null;
+    }
+
+    private string ConvertCompoundCssToXPath(string css)
+    {
+        try
+        {
+            // разбиваем по > (прямой потомок) и пробелу (любой потомок)
+            // нормализуем: заменяем " > " и ">" на разделитель
+            var parts = Regex.Split(css.Trim(), @"\s*>\s*|\s+");
+            if (parts.Length == 0) return null;
+
+            var xpathParts = new List<string>();
+            bool directChild = css.Contains('>');
+
+            // перестраиваем с учётом реального разделителя
+            var tokens = Regex.Split(css.Trim(), @"(\s*>\s*|\s+)");
+            var segments = new List<(string part, bool direct)>();
+            bool nextDirect = false;
+            foreach (var token in tokens)
+            {
+                var t = token.Trim();
+                if (t == ">") { nextDirect = true; continue; }
+                if (string.IsNullOrEmpty(t)) continue;
+                segments.Add((t, nextDirect));
+                nextDirect = false;
+            }
+
+            var sb = new System.Text.StringBuilder();
+            for (int i = 0; i < segments.Count; i++)
+            {
+                var (part, direct) = segments[i];
+                var step = CssSelectorPartToXPath(part);
+                if (step == null) return null;
+
+                if (i == 0)
+                    sb.Append("//").Append(step);
+                else if (direct)
+                    sb.Append("/").Append(step);
+                else
+                    sb.Append("//").Append(step);
+            }
+
+            return sb.ToString();
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    // Конвертирует одну часть CSS-селектора в XPath-шаг: div.foo.bar:nth-of-type(2) → div[contains(@class,'foo') and contains(@class,'bar')][2]
+    private string CssSelectorPartToXPath(string part)
+    {
+        // nth-of-type(n)
+        var nthMatch = Regex.Match(part, @":nth-of-type\((\d+)\)$");
+        int? nth = null;
+        if (nthMatch.Success)
+        {
+            nth = int.Parse(nthMatch.Groups[1].Value);
+            part = part.Substring(0, nthMatch.Index);
+        }
+
+        // tag
+        var tagMatch = Regex.Match(part, @"^([a-zA-Z][\w-]*)");
+        var tag = tagMatch.Success ? tagMatch.Groups[1].Value : "*";
+        var rest = tagMatch.Success ? part.Substring(tagMatch.Length) : part;
+
+        // classes: .foo.bar
+        var classes = Regex.Matches(rest, @"\.([\w-]+)").Cast<Match>().Select(m => m.Groups[1].Value).ToList();
+
+        // id: #foo
+        var idMatch = Regex.Match(rest, @"#([\w-]+)");
+
+        var conditions = new List<string>();
+        if (idMatch.Success)
+            conditions.Add($"@id='{idMatch.Groups[1].Value}'");
+        foreach (var cls in classes)
+            conditions.Add($"contains(@class,'{cls}')");
+        if (nth.HasValue)
+            conditions.Add($"position()={nth.Value}");
+
+        if (conditions.Count == 0)
+            return tag;
+
+        return $"{tag}[{string.Join(" and ", conditions)}]";
     }
 
     // Extracts only direct text nodes from a cell, ignoring nested block elements (ads, tax hints, etc.)

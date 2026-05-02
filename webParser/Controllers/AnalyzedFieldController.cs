@@ -49,10 +49,11 @@ public class AnalyzedFieldController(ILogger<HomeController> logger, AppDbContex
             return BadRequest("site id is required");
         if (dto.FieldToGet == "")
             return BadRequest("field id is required");
-        if(context.FieldNames.Find(dto.FieldNameId)==null)
-            return NotFound("field not found");
-        if(context.AnalyzedSites.Find(dto.AnalyzedSiteId)==null)
+        if (context.AnalyzedSites.Find(dto.AnalyzedSiteId) == null)
             return NotFound("site not found");
+        var fieldName = context.FieldNames.Find(dto.FieldNameId);
+        if (fieldName == null)
+            return BadRequest($"field name with id={dto.FieldNameId} not found");
         context.AnalyzedFields.Add(new AnalyzedField()
         {
             Name = dto.Name,
