@@ -16,6 +16,7 @@ import { StatusBar } from 'expo-status-bar';
 import { Feather } from '@expo/vector-icons';
 import { useSites } from '@/contexts/SitesContext';
 import { useAuth } from '@/contexts/AuthContext';
+import { useTheme } from '@/contexts/ThemeContext';
 import { apiService, AnalyzedField, SiteField } from '@/lib/apiService';
 
 type SortOption = 'name-asc' | 'name-desc' | 'id-asc' | 'id-desc';
@@ -33,6 +34,8 @@ const NUMERIC_FIELD_NAMES = ['Цена', 'Год выпуска', 'Пробег'
 export default function Index() {
     const insets = useSafeAreaInsets();
     const { token, userData } = useAuth();
+    const { isDark } = useTheme();
+    const s = isDark ? darkStyles : lightStyles;
     const { sites, loading, fetchSites, fieldNames, allParsedData, fetchFieldNames, fetchAllParsedData } = useSites();
     const [expandedId, setExpandedId] = useState<number | null>(null);
     const [fields, setFields] = useState<Record<number, SiteField[]>>({});
@@ -195,23 +198,23 @@ export default function Index() {
     };
 
     return (
-        <SafeAreaView style={styles.container}>
+        <SafeAreaView style={s.container}>
             <StatusBar style="dark" />
 
-            <View style={styles.header}>
+            <View style={s.header}>
                 <View>
-                    <Text style={styles.title}>Объявления</Text>
-                    <Text style={styles.subtitle}>
+                    <Text style={s.title}>Объявления</Text>
+                    <Text style={s.subtitle}>
                         {token ? `Пользователь: ${userData?.login || 'без имени'}` : 'Войдите для полного доступа'}
                     </Text>
                 </View>
             </View>
 
-            <View style={styles.controls}>
-                <View style={styles.searchContainer}>
+            <View style={s.controls}>
+                <View style={s.searchContainer}>
                     <Feather name="search" size={20} color="#95a5a6" />
                     <TextInput
-                        style={styles.searchInput}
+                        style={s.searchInput}
                         placeholder="Поиск по названию или URL..."
                         placeholderTextColor="#95a5a6"
                         value={searchQuery}
@@ -225,19 +228,19 @@ export default function Index() {
                     ) : null}
                 </View>
 
-                <View style={styles.controlsRow}>
-                    <TouchableOpacity style={styles.sortButton} onPress={handleSortChange}>
+                <View style={s.controlsRow}>
+                    <TouchableOpacity style={s.sortButton} onPress={handleSortChange}>
                         <Feather name="arrow-down" size={18} color="#4a6fa5" />
-                        <Text style={styles.sortButtonText}>{getSortLabel()}</Text>
+                        <Text style={s.sortButtonText}>{getSortLabel()}</Text>
                         <Feather name="chevron-down" size={16} color="#4a6fa5" />
                     </TouchableOpacity>
 
-                    <TouchableOpacity style={[styles.filterButton, activeFiltersCount > 0 && styles.filterButtonActive]} onPress={openFilterModal}>
+                    <TouchableOpacity style={[s.filterButton, activeFiltersCount > 0 && s.filterButtonActive]} onPress={openFilterModal}>
                         <Feather name="filter" size={18} color={activeFiltersCount > 0 ? '#fff' : '#4a6fa5'} />
-                        <Text style={[styles.filterButtonText, activeFiltersCount > 0 && styles.filterButtonTextActive]}>Фильтры</Text>
+                        <Text style={[s.filterButtonText, activeFiltersCount > 0 && s.filterButtonTextActive]}>Фильтры</Text>
                         {activeFiltersCount > 0 && (
-                            <View style={styles.filterBadge}>
-                                <Text style={styles.filterBadgeText}>{activeFiltersCount}</Text>
+                            <View style={s.filterBadge}>
+                                <Text style={s.filterBadgeText}>{activeFiltersCount}</Text>
                             </View>
                         )}
                     </TouchableOpacity>
@@ -245,15 +248,15 @@ export default function Index() {
             </View>
 
             {loading ? (
-                <View style={styles.emptyState}>
+                <View style={s.emptyState}>
                     <ActivityIndicator size="large" color="#4a6fa5" />
-                    <Text style={styles.emptyText}>Загрузка объявлений...</Text>
+                    <Text style={s.emptyText}>Загрузка объявлений...</Text>
                 </View>
             ) : (
                 <FlatList
                     data={filteredAndSortedSites}
                     keyExtractor={item => String(item.Id)}
-                    contentContainerStyle={styles.list}
+                    contentContainerStyle={s.list}
                     refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#4a6fa5" />}
                     renderItem={({ item }) => {
                         const isExpanded = expandedId === item.Id;
@@ -262,35 +265,35 @@ export default function Index() {
 
                         return (
                             <TouchableOpacity
-                                style={[styles.card, isExpanded && styles.cardExpanded]}
+                                style={[s.card, isExpanded && s.cardExpanded]}
                                 onPress={() => handleCardPress(item.Id)}
                                 activeOpacity={0.8}
                             >
-                                <View style={styles.cardHeader}>
-                                    <View style={styles.cardTitleRow}>
-                                        <Text style={styles.cardTitle}>{item.Name}</Text>
-                                        <Text style={styles.cardId}>#{item.Id}</Text>
+                                <View style={s.cardHeader}>
+                                    <View style={s.cardTitleRow}>
+                                        <Text style={s.cardTitle}>{item.Name}</Text>
+                                        <Text style={s.cardId}>#{item.Id}</Text>
                                     </View>
-                                    <View style={styles.cardUrlRow}>
+                                    <View style={s.cardUrlRow}>
                                         <Feather name="link" size={12} color="#4a6fa5" />
-                                        <Text style={styles.cardUrl} numberOfLines={1}>{item.Url}</Text>
+                                        <Text style={s.cardUrl} numberOfLines={1}>{item.Url}</Text>
                                         <Feather name={isExpanded ? 'chevron-up' : 'chevron-down'} size={16} color="#8aa0b8" />
                                     </View>
                                 </View>
 
                                 {isExpanded && (
-                                    <View style={styles.expandedContent}>
+                                    <View style={s.expandedContent}>
                                         {isLoadingFields ? (
                                             <ActivityIndicator size="small" color="#4a6fa5" />
                                         ) : itemFields && itemFields.length > 0 ? (
                                             itemFields.map((f, index) => (
-                                                <View key={index} style={styles.fieldRow}>
-                                                    <Text style={styles.fieldName}>{f.Field}</Text>
-                                                    <Text style={styles.fieldValue}>{f.Data}</Text>
+                                                <View key={index} style={s.fieldRow}>
+                                                    <Text style={s.fieldName}>{f.Field}</Text>
+                                                    <Text style={s.fieldValue}>{f.Data}</Text>
                                                 </View>
                                             ))
                                         ) : (
-                                            <Text style={styles.noFields}>Нет параметров</Text>
+                                            <Text style={s.noFields}>Нет параметров</Text>
                                         )}
                                     </View>
                                 )}
@@ -298,28 +301,28 @@ export default function Index() {
                         );
                     }}
                     ListEmptyComponent={(
-                        <View style={styles.emptyState}>
+                        <View style={s.emptyState}>
                             <Feather name="file-text" size={36} color="#8aa0b8" />
-                            <Text style={styles.emptyTitle}>Объявлений пока нет</Text>
-                            <Text style={styles.emptyText}>Создайте первое объявление через вкладку добавления</Text>
+                            <Text style={s.emptyTitle}>Объявлений пока нет</Text>
+                            <Text style={s.emptyText}>Создайте первое объявление через вкладку добавления</Text>
                         </View>
                     )}
                 />
             )}
 
             <Modal animationType="slide" transparent visible={showFilterModal} onRequestClose={() => setShowFilterModal(false)}>
-                <View style={styles.modalOverlay}>
-                    <View style={[styles.filterModalContent, { paddingBottom: Math.max(insets.bottom, 24) }]}>
-                        <Text style={styles.modalTitle}>Фильтры</Text>
+                <View style={s.modalOverlay}>
+                    <View style={[s.filterModalContent, { paddingBottom: Math.max(insets.bottom, 24) }]}>
+                        <Text style={s.modalTitle}>Фильтры</Text>
 
-                        <ScrollView style={styles.filterScroll} showsVerticalScrollIndicator={false}>
+                        <ScrollView style={s.filterScroll} showsVerticalScrollIndicator={false}>
                             {pendingConditions.map((condition) => (
-                                <View key={condition.id} style={styles.conditionRow}>
+                                <View key={condition.id} style={s.conditionRow}>
                                     <TouchableOpacity
-                                        style={styles.fieldPickerButton}
+                                        style={s.fieldPickerButton}
                                         onPress={() => setShowFieldPicker(showFieldPicker === condition.id ? null : condition.id)}
                                     >
-                                        <Text style={[styles.fieldPickerText, !condition.fieldNameId && styles.fieldPickerPlaceholder]}>
+                                        <Text style={[s.fieldPickerText, !condition.fieldNameId && s.fieldPickerPlaceholder]}>
                                             {condition.fieldNameId
                                                 ? fieldNames.find(f => f.Id === condition.fieldNameId)?.Name ?? 'Параметр'
                                                 : 'Выберите параметр'}
@@ -334,17 +337,17 @@ export default function Index() {
                                         const hasComboValues = !isNumeric && uniqueValues.length > 0;
 
                                         return isNumeric ? (
-                                            <View style={styles.rangeRow}>
+                                            <View style={s.rangeRow}>
                                                 <TextInput
-                                                    style={[styles.conditionValueInput, styles.rangeInput]}
+                                                    style={[s.conditionValueInput, s.rangeInput]}
                                                     placeholder="От"
                                                     value={condition.valueFrom}
                                                     onChangeText={(v) => updateConditionValueFrom(condition.id, v)}
                                                     keyboardType="numeric"
                                                 />
-                                                <Text style={styles.rangeSeparator}>—</Text>
+                                                <Text style={s.rangeSeparator}>—</Text>
                                                 <TextInput
-                                                    style={[styles.conditionValueInput, styles.rangeInput]}
+                                                    style={[s.conditionValueInput, s.rangeInput]}
                                                     placeholder="До"
                                                     value={condition.valueTo}
                                                     onChangeText={(v) => updateConditionValueTo(condition.id, v)}
@@ -352,21 +355,21 @@ export default function Index() {
                                                 />
                                             </View>
                                         ) : hasComboValues ? (
-                                            <View style={styles.comboContainer}>
+                                            <View style={s.comboContainer}>
                                                 <TextInput
-                                                    style={styles.conditionValueInput}
+                                                    style={s.conditionValueInput}
                                                     placeholder="Значение"
                                                     value={condition.value}
                                                     onChangeText={(v) => updateConditionValue(condition.id, v)}
                                                 />
-                                                <View style={styles.comboChips}>
+                                                <View style={s.comboChips}>
                                                     {uniqueValues.map(val => (
                                                         <TouchableOpacity
                                                             key={val}
-                                                            style={[styles.comboChip, condition.value === val && styles.comboChipActive]}
+                                                            style={[s.comboChip, condition.value === val && s.comboChipActive]}
                                                             onPress={() => updateConditionValue(condition.id, condition.value === val ? '' : val)}
                                                         >
-                                                            <Text style={[styles.comboChipText, condition.value === val && styles.comboChipTextActive]}>
+                                                            <Text style={[s.comboChipText, condition.value === val && s.comboChipTextActive]}>
                                                                 {val}
                                                             </Text>
                                                         </TouchableOpacity>
@@ -375,7 +378,7 @@ export default function Index() {
                                             </View>
                                         ) : (
                                             <TextInput
-                                                style={styles.conditionValueInput}
+                                                style={s.conditionValueInput}
                                                 placeholder="Значение"
                                                 value={condition.value}
                                                 onChangeText={(v) => updateConditionValue(condition.id, v)}
@@ -383,12 +386,12 @@ export default function Index() {
                                         );
                                     })()}
 
-                                    <TouchableOpacity style={styles.removeConditionButton} onPress={() => removeCondition(condition.id)}>
+                                    <TouchableOpacity style={s.removeConditionButton} onPress={() => removeCondition(condition.id)}>
                                         <Feather name="x" size={18} color="#e74c3c" />
                                     </TouchableOpacity>
 
                                     {showFieldPicker === condition.id && (
-                                        <View style={styles.fieldDropdown}>
+                                        <View style={s.fieldDropdown}>
                                             <FlatList
                                                 data={fieldNames.filter(f =>
                                                     f.Id === condition.fieldNameId ||
@@ -397,10 +400,10 @@ export default function Index() {
                                                 keyExtractor={(item) => item.Id.toString()}
                                                 renderItem={({ item }) => (
                                                     <TouchableOpacity
-                                                        style={[styles.fieldDropdownItem, condition.fieldNameId === item.Id && styles.fieldDropdownItemActive]}
+                                                        style={[s.fieldDropdownItem, condition.fieldNameId === item.Id && s.fieldDropdownItemActive]}
                                                         onPress={() => updateConditionField(condition.id, item.Id)}
                                                     >
-                                                        <Text style={[styles.fieldDropdownText, condition.fieldNameId === item.Id && styles.fieldDropdownTextActive]}>
+                                                        <Text style={[s.fieldDropdownText, condition.fieldNameId === item.Id && s.fieldDropdownTextActive]}>
                                                             {item.Name}
                                                         </Text>
                                                     </TouchableOpacity>
@@ -412,18 +415,18 @@ export default function Index() {
                                 </View>
                             ))}
 
-                            <TouchableOpacity style={styles.addConditionButton} onPress={addCondition}>
+                            <TouchableOpacity style={s.addConditionButton} onPress={addCondition}>
                                 <Feather name="plus" size={18} color="#4a6fa5" />
-                                <Text style={styles.addConditionText}>Добавить условие</Text>
+                                <Text style={s.addConditionText}>Добавить условие</Text>
                             </TouchableOpacity>
                         </ScrollView>
 
-                        <TouchableOpacity style={styles.applyButton} onPress={applyFilters}>
-                            <Text style={styles.applyButtonText}>Применить фильтры</Text>
+                        <TouchableOpacity style={s.applyButton} onPress={applyFilters}>
+                            <Text style={s.applyButtonText}>Применить фильтры</Text>
                         </TouchableOpacity>
 
-                        <TouchableOpacity style={styles.resetButton} onPress={resetFilters}>
-                            <Text style={styles.resetButtonText}>Сбросить все фильтры</Text>
+                        <TouchableOpacity style={s.resetButton} onPress={resetFilters}>
+                            <Text style={s.resetButtonText}>Сбросить все фильтры</Text>
                         </TouchableOpacity>
                     </View>
                 </View>
@@ -432,7 +435,7 @@ export default function Index() {
     );
 }
 
-const styles = StyleSheet.create({
+const lightStyles = StyleSheet.create({
     container: { flex: 1, backgroundColor: '#f8f9fa' },
     header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 16 },
     title: { fontSize: 24, fontWeight: '700', color: '#1f2d3d' },
@@ -522,5 +525,98 @@ const styles = StyleSheet.create({
     comboChip: { paddingHorizontal: 12, paddingVertical: 6, borderRadius: 16, backgroundColor: '#f0f0f0', borderWidth: 1, borderColor: '#e0e0e0' },
     comboChipActive: { backgroundColor: '#4a6fa5', borderColor: '#4a6fa5' },
     comboChipText: { fontSize: 13, color: '#2c3e50' },
+    comboChipTextActive: { color: '#fff' },
+});
+
+const darkStyles = StyleSheet.create({
+    container: { flex: 1, backgroundColor: '#0f0f0f' },
+    header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 16 },
+    title: { fontSize: 24, fontWeight: '700', color: '#f1f5f9' },
+    subtitle: { color: '#9ca3af', marginTop: 4 },
+    controls: { paddingHorizontal: 16, paddingBottom: 12, gap: 10 },
+    searchContainer: {
+        flexDirection: 'row', alignItems: 'center', backgroundColor: '#1a1a1a',
+        borderRadius: 12, paddingHorizontal: 14, paddingVertical: 10,
+        borderWidth: 1, borderColor: '#2d2d2d',
+    },
+    searchInput: { flex: 1, marginLeft: 10, fontSize: 15, color: '#e2e8f0', padding: 0 },
+    controlsRow: { flexDirection: 'row', alignItems: 'center' },
+    sortButton: {
+        flex: 1, flexDirection: 'row', alignItems: 'center', backgroundColor: '#1a1a1a',
+        borderRadius: 12, paddingHorizontal: 14, paddingVertical: 10,
+        borderWidth: 1, borderColor: '#2d2d2d', marginRight: 8,
+    },
+    sortButtonText: { flex: 1, marginLeft: 8, fontSize: 13, color: '#60a5fa', fontWeight: '500' },
+    filterButton: {
+        flexDirection: 'row', alignItems: 'center', backgroundColor: '#1a1a1a',
+        borderRadius: 12, paddingHorizontal: 14, paddingVertical: 10,
+        borderWidth: 1, borderColor: '#2d2d2d',
+    },
+    filterButtonActive: { backgroundColor: '#4a6fa5', borderColor: '#4a6fa5' },
+    filterButtonText: { marginLeft: 6, fontSize: 13, color: '#60a5fa', fontWeight: '500' },
+    filterButtonTextActive: { color: '#fff' },
+    filterBadge: { marginLeft: 6, backgroundColor: '#fff', borderRadius: 10, width: 20, height: 20, justifyContent: 'center', alignItems: 'center' },
+    filterBadgeText: { fontSize: 11, fontWeight: 'bold', color: '#4a6fa5' },
+    list: { padding: 16, gap: 12 },
+    card: { backgroundColor: '#1a1a1a', borderRadius: 18, padding: 16, borderWidth: 1, borderColor: '#2d2d2d' },
+    cardExpanded: { borderColor: '#4a6fa5' },
+    cardHeader: { gap: 6 },
+    cardTitleRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+    cardTitle: { fontSize: 16, fontWeight: '700', color: '#f1f5f9', flex: 1, marginRight: 8 },
+    cardId: { color: '#6b7280', fontSize: 12 },
+    cardUrlRow: { flexDirection: 'row', alignItems: 'center', gap: 4 },
+    cardUrl: { flex: 1, color: '#60a5fa', fontSize: 12 },
+    expandedContent: { marginTop: 14, borderTopWidth: 1, borderTopColor: '#2d2d2d', paddingTop: 12, gap: 8 },
+    fieldRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+    fieldName: { color: '#9ca3af', fontSize: 13, flex: 1 },
+    fieldValue: { color: '#e2e8f0', fontSize: 13, fontWeight: '600', flex: 1, textAlign: 'right' },
+    noFields: { color: '#6b7280', textAlign: 'center', fontSize: 13 },
+    emptyState: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 24, gap: 8 },
+    emptyTitle: { fontSize: 18, fontWeight: '700', color: '#f1f5f9' },
+    emptyText: { color: '#9ca3af', textAlign: 'center' },
+    modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.7)', justifyContent: 'center', alignItems: 'center', padding: 20 },
+    filterModalContent: { backgroundColor: '#1a1a1a', borderRadius: 20, width: '100%', maxWidth: 400, maxHeight: '85%', padding: 24 },
+    modalTitle: { fontSize: 18, fontWeight: 'bold', color: '#f1f5f9', marginBottom: 16, textAlign: 'center' },
+    filterScroll: { marginBottom: 16 },
+    conditionRow: { marginBottom: 12, position: 'relative' },
+    fieldPickerButton: {
+        flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+        backgroundColor: '#2d2d2d', borderRadius: 10, paddingHorizontal: 14, paddingVertical: 10,
+        borderWidth: 1, borderColor: '#3d3d3d', marginBottom: 8,
+    },
+    fieldPickerText: { fontSize: 14, color: '#e2e8f0' },
+    fieldPickerPlaceholder: { color: '#6b7280' },
+    conditionValueInput: {
+        backgroundColor: '#2d2d2d', borderRadius: 10, paddingHorizontal: 14, paddingVertical: 10,
+        borderWidth: 1, borderColor: '#3d3d3d', fontSize: 14, color: '#e2e8f0', marginBottom: 8,
+    },
+    rangeRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 8 },
+    rangeInput: { flex: 1, marginBottom: 0 },
+    rangeSeparator: { marginHorizontal: 8, fontSize: 16, color: '#6b7280' },
+    removeConditionButton: { position: 'absolute', top: 8, right: 8, padding: 4 },
+    fieldDropdown: {
+        backgroundColor: '#1a1a1a', borderRadius: 10, borderWidth: 1, borderColor: '#2d2d2d',
+        marginBottom: 8, shadowColor: '#000', shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.3, shadowRadius: 4, elevation: 4,
+    },
+    fieldDropdownItem: { paddingHorizontal: 14, paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: '#2d2d2d' },
+    fieldDropdownItemActive: { backgroundColor: '#1e3a5f' },
+    fieldDropdownText: { fontSize: 14, color: '#e2e8f0' },
+    fieldDropdownTextActive: { color: '#60a5fa', fontWeight: '600' },
+    addConditionButton: {
+        flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
+        backgroundColor: '#1e3a5f', borderRadius: 10, paddingVertical: 12,
+        borderWidth: 1, borderColor: '#4a6fa5', borderStyle: 'dashed', marginTop: 4,
+    },
+    addConditionText: { marginLeft: 8, fontSize: 14, color: '#60a5fa', fontWeight: '500' },
+    applyButton: { backgroundColor: '#4a6fa5', borderRadius: 12, padding: 16, alignItems: 'center', marginBottom: 10 },
+    applyButtonText: { color: 'white', fontSize: 16, fontWeight: '600' },
+    resetButton: { backgroundColor: '#2d2d2d', borderRadius: 12, padding: 16, alignItems: 'center', borderWidth: 1, borderColor: '#3d3d3d' },
+    resetButtonText: { color: '#f87171', fontSize: 16, fontWeight: '500' },
+    comboContainer: { marginBottom: 8 },
+    comboChips: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginBottom: 4 },
+    comboChip: { paddingHorizontal: 12, paddingVertical: 6, borderRadius: 16, backgroundColor: '#2d2d2d', borderWidth: 1, borderColor: '#3d3d3d' },
+    comboChipActive: { backgroundColor: '#4a6fa5', borderColor: '#4a6fa5' },
+    comboChipText: { fontSize: 13, color: '#e2e8f0' },
     comboChipTextActive: { color: '#fff' },
 });

@@ -18,6 +18,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import React, { useCallback, useEffect, useState, useMemo } from 'react';
 import { Feather, MaterialIcons, AntDesign } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
+import { useTheme } from '@/contexts/ThemeContext';
 
 interface Site {
     Id: number;
@@ -43,6 +44,8 @@ interface FilterCondition {
 const NUMERIC_FIELD_NAMES = ['Цена', 'Год выпуска', 'Пробег', 'Мощность двигателя', 'Объём двигателя'];
 
 export default function Sites() {
+    const { isDark } = useTheme();
+    const s = isDark ? darkStyles : lightStyles;
     const insets = useSafeAreaInsets();
     const [refreshing, setRefreshing] = useState(false);
     const [searchQuery, setSearchQuery] = useState('');
@@ -359,10 +362,10 @@ export default function Sites() {
 
     if (loading) {
         return (
-            <SafeAreaView style={styles.container}>
-                <View style={styles.loadingContainer}>
+            <SafeAreaView style={s.container}>
+                <View style={s.loadingContainer}>
                     <ActivityIndicator size="large" color="#4a6fa5" />
-                    <Text style={styles.loadingText}>Загрузка сайтов...</Text>
+                    <Text style={s.loadingText}>Загрузка сайтов...</Text>
                 </View>
             </SafeAreaView>
         );
@@ -370,13 +373,13 @@ export default function Sites() {
 
     if (error) {
         return (
-            <SafeAreaView style={styles.container}>
-                <View style={styles.errorContainer}>
+            <SafeAreaView style={s.container}>
+                <View style={s.errorContainer}>
                     <MaterialIcons name="error-outline" size={64} color="#e74c3c" />
-                    <Text style={styles.errorText}>Ошибка загрузки</Text>
-                    <Text style={styles.errorSubtext}>{error}</Text>
-                    <TouchableOpacity style={styles.retryButton} onPress={fetchSites}>
-                        <Text style={styles.retryButtonText}>Повторить попытку</Text>
+                    <Text style={s.errorText}>Ошибка загрузки</Text>
+                    <Text style={s.errorSubtext}>{error}</Text>
+                    <TouchableOpacity style={s.retryButton} onPress={fetchSites}>
+                        <Text style={s.retryButtonText}>Повторить попытку</Text>
                     </TouchableOpacity>
                 </View>
             </SafeAreaView>
@@ -384,12 +387,12 @@ export default function Sites() {
     }
 
     return (
-        <SafeAreaView style={styles.container}>
+        <SafeAreaView style={s.container}>
             {/* Заголовок */}
-            <View style={styles.header}>
-                <Text style={styles.title}>Сайты</Text>
-                <View style={styles.headerStats}>
-                    <Text style={styles.subtitle}>
+            <View style={s.header}>
+                <Text style={s.title}>Сайты</Text>
+                <View style={s.headerStats}>
+                    <Text style={s.subtitle}>
                         {showOnlyFavorites && token
                             ? `${filteredAndSortedSites.length} избранных сайтов`
                             : `${filteredAndSortedSites.length} из ${sites.length} сайтов`
@@ -398,16 +401,16 @@ export default function Sites() {
                     {token && (
                         <TouchableOpacity
                             style={[
-                                styles.favoritesToggle,
-                                showOnlyFavorites && styles.favoritesToggleActive
+                                s.favoritesToggle,
+                                showOnlyFavorites && s.favoritesToggleActive
                             ]}
                             onPress={toggleShowOnlyFavorites}
                         >
 
 
                             <Text style={[
-                                styles.favoritesToggleText,
-                                showOnlyFavorites && styles.favoritesToggleTextActive
+                                s.favoritesToggleText,
+                                showOnlyFavorites && s.favoritesToggleTextActive
                             ]}>
                                 {showOnlyFavorites ? 'Все сайты' : 'Только избранные'}
                             </Text>
@@ -417,11 +420,11 @@ export default function Sites() {
             </View>
 
             {/* Панель поиска и сортировки */}
-            <View style={styles.controls}>
-                <View style={styles.searchContainer}>
+            <View style={s.controls}>
+                <View style={s.searchContainer}>
                     <Feather name="search" size={20} color="#95a5a6" />
                     <TextInput
-                        style={styles.searchInput}
+                        style={s.searchInput}
                         placeholder={
                             showOnlyFavorites && token
                                 ? "Поиск в избранном..."
@@ -438,19 +441,19 @@ export default function Sites() {
                     ) : null}
                 </View>
 
-                <View style={styles.controlsRow}>
-                    <TouchableOpacity style={styles.sortButton} onPress={handleSortChange}>
+                <View style={s.controlsRow}>
+                    <TouchableOpacity style={s.sortButton} onPress={handleSortChange}>
                         <Feather name="arrow-down" size={18} color="#4a6fa5" />
-                        <Text style={styles.sortButtonText}>{getSortLabel()}</Text>
+                        <Text style={s.sortButtonText}>{getSortLabel()}</Text>
                         <Feather name="chevron-down" size={16} color="#4a6fa5" />
                     </TouchableOpacity>
 
-                    <TouchableOpacity style={[styles.filterButton, activeFiltersCount > 0 && styles.filterButtonActive]} onPress={openFilterModal}>
+                    <TouchableOpacity style={[s.filterButton, activeFiltersCount > 0 && s.filterButtonActive]} onPress={openFilterModal}>
                         <Feather name="filter" size={18} color={activeFiltersCount > 0 ? '#fff' : '#4a6fa5'} />
-                        <Text style={[styles.filterButtonText, activeFiltersCount > 0 && styles.filterButtonTextActive]}>Фильтры</Text>
+                        <Text style={[s.filterButtonText, activeFiltersCount > 0 && s.filterButtonTextActive]}>Фильтры</Text>
                         {activeFiltersCount > 0 && (
-                            <View style={styles.filterBadge}>
-                                <Text style={styles.filterBadgeText}>{activeFiltersCount}</Text>
+                            <View style={s.filterBadge}>
+                                <Text style={s.filterBadgeText}>{activeFiltersCount}</Text>
                             </View>
                         )}
                     </TouchableOpacity>
@@ -459,8 +462,8 @@ export default function Sites() {
 
             {/* Список сайтов */}
             <ScrollView
-                style={styles.scrollView}
-                contentContainerStyle={styles.scrollContent}
+                style={s.scrollView}
+                contentContainerStyle={s.scrollContent}
                 refreshControl={
                     <RefreshControl
                         refreshing={refreshing}
@@ -471,15 +474,15 @@ export default function Sites() {
                 }
             >
                 {filteredAndSortedSites.length === 0 ? (
-                    <View style={styles.emptyState}>
+                    <View style={s.emptyState}>
                         <Feather name="inbox" size={64} color="#bdc3c7" />
-                        <Text style={styles.emptyTitle}>
+                        <Text style={s.emptyTitle}>
                             {showOnlyFavorites && token
                                 ? 'Нет избранных сайтов'
                                 : 'Сайты не найдены'
                             }
                         </Text>
-                        <Text style={styles.emptyText}>
+                        <Text style={s.emptyText}>
                             {showOnlyFavorites && token
                                 ? 'Добавляйте сайты в избранное, чтобы они появились здесь'
                                 : searchQuery
@@ -489,10 +492,10 @@ export default function Sites() {
                         </Text>
                         {showOnlyFavorites && token && (
                             <TouchableOpacity
-                                style={styles.browseButton}
+                                style={s.browseButton}
                                 onPress={toggleShowOnlyFavorites}
                             >
-                                <Text style={styles.browseButtonText}>Показать все сайты</Text>
+                                <Text style={s.browseButtonText}>Показать все сайты</Text>
                             </TouchableOpacity>
                         )}
                     </View>
@@ -506,31 +509,31 @@ export default function Sites() {
                             <TouchableOpacity
                                 key={`site-${site.Id}-${favorite}-${expandedCardId === site.Id}`}
                                 style={[
-                                    styles.card,
-                                    expandedCardId === site.Id && styles.cardExpanded,
-                                    token && favorite && styles.cardFavorite
+                                    s.card,
+                                    expandedCardId === site.Id && s.cardExpanded,
+                                    token && favorite && s.cardFavorite
                                 ]}
                                 onPress={() => handleCardPress(site)}
                                 activeOpacity={0.7}
                             >
                                 {/* Заголовок карточки */}
-                                <View style={styles.cardHeader}>
-                                    <View style={styles.siteIcon}>
+                                <View style={s.cardHeader}>
+                                    <View style={s.siteIcon}>
                                         {token && favorite ? (
                                             <AntDesign name="star" size={18} color="#f39c12" />
                                         ) : (
                                             <Feather name="globe" size={18} color="#4a6fa5" />
                                         )}
                                     </View>
-                                    <View style={styles.cardHeaderContent}>
-                                        <Text style={styles.siteName} numberOfLines={1}>
+                                    <View style={s.cardHeaderContent}>
+                                        <Text style={s.siteName} numberOfLines={1}>
                                             {site.Name}
                                         </Text>
-                                        <View style={styles.siteInfoRow}>
-                                            <Text style={styles.siteId}>ID: {site.Id}</Text>
-                                            <View style={styles.domainContainer}>
+                                        <View style={s.siteInfoRow}>
+                                            <Text style={s.siteId}>ID: {site.Id}</Text>
+                                            <View style={s.domainContainer}>
                                                 <Feather name="link" size={10} color="#3498db" />
-                                                <Text style={styles.domainText} numberOfLines={1}>
+                                                <Text style={s.domainText} numberOfLines={1}>
                                                     {domain}
                                                 </Text>
                                             </View>
@@ -540,7 +543,7 @@ export default function Sites() {
                                     {/* Кнопка избранного */}
                                     {token && (
                                         <TouchableOpacity
-                                            style={styles.favoriteButton}
+                                            style={s.favoriteButton}
                                             onPress={(e) => {
                                                 e.stopPropagation();
                                                 handleFavoritePress(site.Id);
@@ -569,7 +572,7 @@ export default function Sites() {
 
                                     {/* Кнопка ссылки */}
                                     <TouchableOpacity
-                                        style={styles.urlButton}
+                                        style={s.urlButton}
                                         onPress={(e) => {
                                             e.stopPropagation();
                                             handleShowUrl(site.Url);
@@ -588,32 +591,32 @@ export default function Sites() {
 
                                 {/* Расширенная информация */}
                                 {expandedCardId === site.Id && (
-                                    <View style={styles.expandedContent}>
+                                    <View style={s.expandedContent}>
                                         {/* URL сайта */}
-                                        <View style={styles.urlSection}>
-                                            <Text style={styles.sectionLabel}>URL:</Text>
+                                        <View style={s.urlSection}>
+                                            <Text style={s.sectionLabel}>URL:</Text>
                                             <TouchableOpacity onPress={() => handleShowUrl(site.Url)}>
-                                                <Text style={styles.urlText} numberOfLines={1}>
+                                                <Text style={s.urlText} numberOfLines={1}>
                                                     {site.Url}
                                                 </Text>
                                             </TouchableOpacity>
                                         </View>
 
                                         {/* Данные с парсера */}
-                                        <View style={styles.fieldsSection}>
-                                            <Text style={styles.sectionLabel}>Данные:</Text>
+                                        <View style={s.fieldsSection}>
+                                            <Text style={s.sectionLabel}>Данные:</Text>
                                             {loadingFields[site.Id] ? (
-                                                <View style={styles.loadingFields}>
+                                                <View style={s.loadingFields}>
                                                     <ActivityIndicator size="small" color="#4a6fa5" />
-                                                    <Text style={styles.loadingFieldsText}>Загрузка данных...</Text>
+                                                    <Text style={s.loadingFieldsText}>Загрузка данных...</Text>
                                                 </View>
                                             ) : siteFields[site.Id] && siteFields[site.Id].length > 0 ? (
                                                 siteFields[site.Id].map((field, index) => (
-                                                    <View key={index} style={styles.fieldItem}>
-                                                        <View style={styles.fieldHeader}>
-                                                            <Text style={styles.fieldName}>{field.Field}</Text>
-                                                            <View style={styles.fieldValueContainer}>
-                                                                <Text style={styles.fieldValue} numberOfLines={2}>
+                                                    <View key={index} style={s.fieldItem}>
+                                                        <View style={s.fieldHeader}>
+                                                            <Text style={s.fieldName}>{field.Field}</Text>
+                                                            <View style={s.fieldValueContainer}>
+                                                                <Text style={s.fieldValue} numberOfLines={2}>
                                                                     {field.Data}
                                                                 </Text>
                                                             </View>
@@ -621,7 +624,7 @@ export default function Sites() {
                                                     </View>
                                                 ))
                                             ) : (
-                                                <Text style={styles.noDataText}>Нет данных с парсера</Text>
+                                                <Text style={s.noDataText}>Нет данных с парсера</Text>
                                             )}
                                         </View>
                                     </View>
@@ -639,18 +642,18 @@ export default function Sites() {
                 visible={showFilterModal}
                 onRequestClose={() => setShowFilterModal(false)}
             >
-                <View style={styles.modalOverlay}>
-                    <View style={[styles.filterModalContent, { paddingBottom: Math.max(insets.bottom, 24) }]}>
-                        <Text style={styles.modalTitle}>Фильтры</Text>
+                <View style={s.modalOverlay}>
+                    <View style={[s.filterModalContent, { paddingBottom: Math.max(insets.bottom, 24) }]}>
+                        <Text style={s.modalTitle}>Фильтры</Text>
 
-                        <ScrollView style={styles.filterScroll} showsVerticalScrollIndicator={false}>
+                        <ScrollView style={s.filterScroll} showsVerticalScrollIndicator={false}>
                             {pendingConditions.map((condition) => (
-                                <View key={condition.id} style={styles.conditionRow}>
+                                <View key={condition.id} style={s.conditionRow}>
                                     <TouchableOpacity
-                                        style={styles.fieldPickerButton}
+                                        style={s.fieldPickerButton}
                                         onPress={() => setShowFieldPicker(showFieldPicker === condition.id ? null : condition.id)}
                                     >
-                                        <Text style={[styles.fieldPickerText, !condition.fieldNameId && styles.fieldPickerPlaceholder]}>
+                                        <Text style={[s.fieldPickerText, !condition.fieldNameId && s.fieldPickerPlaceholder]}>
                                             {condition.fieldNameId
                                                 ? fieldNames.find(f => f.Id === condition.fieldNameId)?.Name ?? 'Параметр'
                                                 : 'Выберите параметр'}
@@ -665,17 +668,17 @@ export default function Sites() {
                                         const hasComboValues = !isNumeric && uniqueValues.length > 0;
 
                                         return isNumeric ? (
-                                            <View style={styles.rangeRow}>
+                                            <View style={s.rangeRow}>
                                                 <TextInput
-                                                    style={[styles.conditionValueInput, styles.rangeInput]}
+                                                    style={[s.conditionValueInput, s.rangeInput]}
                                                     placeholder="От"
                                                     value={condition.valueFrom}
                                                     onChangeText={(v) => updateConditionValueFrom(condition.id, v)}
                                                     keyboardType="numeric"
                                                 />
-                                                <Text style={styles.rangeSeparator}>—</Text>
+                                                <Text style={s.rangeSeparator}>—</Text>
                                                 <TextInput
-                                                    style={[styles.conditionValueInput, styles.rangeInput]}
+                                                    style={[s.conditionValueInput, s.rangeInput]}
                                                     placeholder="До"
                                                     value={condition.valueTo}
                                                     onChangeText={(v) => updateConditionValueTo(condition.id, v)}
@@ -683,21 +686,21 @@ export default function Sites() {
                                                 />
                                             </View>
                                         ) : hasComboValues ? (
-                                            <View style={styles.comboContainer}>
+                                            <View style={s.comboContainer}>
                                                 <TextInput
-                                                    style={styles.conditionValueInput}
+                                                    style={s.conditionValueInput}
                                                     placeholder="Значение"
                                                     value={condition.value}
                                                     onChangeText={(v) => updateConditionValue(condition.id, v)}
                                                 />
-                                                <View style={styles.comboChips}>
+                                                <View style={s.comboChips}>
                                                     {uniqueValues.map(val => (
                                                         <TouchableOpacity
                                                             key={val}
-                                                            style={[styles.comboChip, condition.value === val && styles.comboChipActive]}
+                                                            style={[s.comboChip, condition.value === val && s.comboChipActive]}
                                                             onPress={() => updateConditionValue(condition.id, condition.value === val ? '' : val)}
                                                         >
-                                                            <Text style={[styles.comboChipText, condition.value === val && styles.comboChipTextActive]}>
+                                                            <Text style={[s.comboChipText, condition.value === val && s.comboChipTextActive]}>
                                                                 {val}
                                                             </Text>
                                                         </TouchableOpacity>
@@ -706,19 +709,19 @@ export default function Sites() {
                                             </View>
                                         ) : (
                                             <TextInput
-                                                style={styles.conditionValueInput}
+                                                style={s.conditionValueInput}
                                                 placeholder="Значение"
                                                 value={condition.value}
                                                 onChangeText={(v) => updateConditionValue(condition.id, v)}
                                             />
                                         );
                                     })()}
-                                    <TouchableOpacity style={styles.removeConditionButton} onPress={() => removeCondition(condition.id)}>
+                                    <TouchableOpacity style={s.removeConditionButton} onPress={() => removeCondition(condition.id)}>
                                         <Feather name="x" size={18} color="#e74c3c" />
                                     </TouchableOpacity>
 
                                     {showFieldPicker === condition.id && (
-                                        <View style={styles.fieldDropdown}>
+                                        <View style={s.fieldDropdown}>
                                             <FlatList
                                                 data={fieldNames.filter(f =>
                                                     f.Id === condition.fieldNameId ||
@@ -727,10 +730,10 @@ export default function Sites() {
                                                 keyExtractor={(item) => item.Id.toString()}
                                                 renderItem={({ item }) => (
                                                     <TouchableOpacity
-                                                        style={[styles.fieldDropdownItem, condition.fieldNameId === item.Id && styles.fieldDropdownItemActive]}
+                                                        style={[s.fieldDropdownItem, condition.fieldNameId === item.Id && s.fieldDropdownItemActive]}
                                                         onPress={() => updateConditionField(condition.id, item.Id)}
                                                     >
-                                                        <Text style={[styles.fieldDropdownText, condition.fieldNameId === item.Id && styles.fieldDropdownTextActive]}>
+                                                        <Text style={[s.fieldDropdownText, condition.fieldNameId === item.Id && s.fieldDropdownTextActive]}>
                                                             {item.Name}
                                                         </Text>
                                                     </TouchableOpacity>
@@ -742,18 +745,18 @@ export default function Sites() {
                                 </View>
                             ))}
 
-                            <TouchableOpacity style={styles.addConditionButton} onPress={addCondition}>
+                            <TouchableOpacity style={s.addConditionButton} onPress={addCondition}>
                                 <Feather name="plus" size={18} color="#4a6fa5" />
-                                <Text style={styles.addConditionText}>Добавить условие</Text>
+                                <Text style={s.addConditionText}>Добавить условие</Text>
                             </TouchableOpacity>
                         </ScrollView>
 
-                        <TouchableOpacity style={styles.applyButton} onPress={applyFilters}>
-                            <Text style={styles.applyButtonText}>Применить фильтры</Text>
+                        <TouchableOpacity style={s.applyButton} onPress={applyFilters}>
+                            <Text style={s.applyButtonText}>Применить фильтры</Text>
                         </TouchableOpacity>
 
-                        <TouchableOpacity style={styles.resetButton} onPress={resetFilters}>
-                            <Text style={styles.resetButtonText}>Сбросить все фильтры</Text>
+                        <TouchableOpacity style={s.resetButton} onPress={resetFilters}>
+                            <Text style={s.resetButtonText}>Сбросить все фильтры</Text>
                         </TouchableOpacity>
                     </View>
                 </View>
@@ -766,19 +769,19 @@ export default function Sites() {
                 visible={showUrlModal}
                 onRequestClose={() => setShowUrlModal(false)}
             >
-                <View style={styles.modalOverlay}>
-                    <View style={[styles.modalContent, { paddingBottom: Math.max(insets.bottom, 24) }]}>
-                        <Text style={styles.modalTitle}>Полный URL сайта</Text>
-                        <ScrollView style={styles.urlModalScroll}>
-                            <Text style={styles.fullUrlText} selectable={true}>
+                <View style={s.modalOverlay}>
+                    <View style={[s.modalContent, { paddingBottom: Math.max(insets.bottom, 24) }]}>
+                        <Text style={s.modalTitle}>Полный URL сайта</Text>
+                        <ScrollView style={s.urlModalScroll}>
+                            <Text style={s.fullUrlText} selectable={true}>
                                 {selectedUrl}
                             </Text>
                         </ScrollView>
                         <TouchableOpacity
-                            style={styles.modalCloseButton}
+                            style={s.modalCloseButton}
                             onPress={() => setShowUrlModal(false)}
                         >
-                            <Text style={styles.modalCloseButtonText}>Закрыть</Text>
+                            <Text style={s.modalCloseButtonText}>Закрыть</Text>
                         </TouchableOpacity>
                     </View>
                 </View>
@@ -787,7 +790,7 @@ export default function Sites() {
     );
 }
 
-const styles = StyleSheet.create({
+const lightStyles = StyleSheet.create({
     container: {
         flex: 1,
         backgroundColor: '#f5f7fa',
@@ -1351,4 +1354,103 @@ const styles = StyleSheet.create({
         marginLeft: 4,
         fontFamily: 'monospace',
     },
+});
+
+const darkStyles = StyleSheet.create({
+    container: { flex: 1, backgroundColor: '#0f0f0f' },
+    loadingContainer: { flex: 1, justifyContent: 'center', alignItems: 'center' },
+    loadingText: { marginTop: 12, fontSize: 16, color: '#9ca3af' },
+    errorContainer: { flex: 1, justifyContent: 'center', alignItems: 'center', padding: 20 },
+    errorText: { fontSize: 20, fontWeight: 'bold', color: '#f1f5f9', marginTop: 16 },
+    errorSubtext: { fontSize: 14, color: '#f87171', textAlign: 'center', marginTop: 8, marginBottom: 20 },
+    retryButton: { backgroundColor: '#4a6fa5', paddingHorizontal: 24, paddingVertical: 12, borderRadius: 8 },
+    retryButtonText: { color: 'white', fontSize: 16, fontWeight: '600' },
+    header: { paddingHorizontal: 20, paddingTop: 16, paddingBottom: 8 },
+    title: { fontSize: 28, fontWeight: 'bold', color: '#f1f5f9' },
+    headerStats: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 4 },
+    subtitle: { fontSize: 14, color: '#9ca3af' },
+    favoritesToggle: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#2d2d2d', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 16, borderWidth: 1, borderColor: '#3d3d3d' },
+    favoritesToggleActive: { backgroundColor: '#3d2a00', borderColor: '#f39c12' },
+    favoritesToggleText: { fontSize: 12, color: '#9ca3af', fontWeight: '500', marginLeft: 4 },
+    favoritesToggleTextActive: { color: '#f39c12' },
+    controls: { paddingHorizontal: 20, paddingBottom: 16, gap: 12 },
+    searchContainer: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#1a1a1a', borderRadius: 12, paddingHorizontal: 16, paddingVertical: 12, borderWidth: 1, borderColor: '#2d2d2d' },
+    searchInput: { flex: 1, marginLeft: 12, fontSize: 16, color: '#e2e8f0', padding: 0 },
+    sortButton: { flex: 1, flexDirection: 'row', alignItems: 'center', backgroundColor: '#1a1a1a', borderRadius: 12, paddingHorizontal: 16, paddingVertical: 12, borderWidth: 1, borderColor: '#2d2d2d', marginRight: 8 },
+    sortButtonText: { flex: 1, marginLeft: 8, fontSize: 14, color: '#60a5fa', fontWeight: '500' },
+    scrollView: { flex: 1 },
+    scrollContent: { paddingHorizontal: 20, paddingBottom: 20 },
+    card: { backgroundColor: '#1a1a1a', borderRadius: 16, marginBottom: 12, overflow: 'hidden', borderWidth: 1, borderColor: '#2d2d2d' },
+    cardExpanded: { borderColor: '#4a6fa5', shadowColor: '#4a6fa5', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.2, shadowRadius: 8, elevation: 4 },
+    cardFavorite: { borderLeftWidth: 4, borderLeftColor: '#f39c12' },
+    cardHeader: { flexDirection: 'row', alignItems: 'center', padding: 16 },
+    siteIcon: { width: 40, height: 40, borderRadius: 20, backgroundColor: '#1e3a5f', justifyContent: 'center', alignItems: 'center', marginRight: 12 },
+    cardHeaderContent: { flex: 1 },
+    siteName: { fontSize: 16, fontWeight: '600', color: '#f1f5f9', marginBottom: 4 },
+    siteInfoRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+    siteId: { fontSize: 12, color: '#6b7280' },
+    favoriteButton: { padding: 8, marginRight: 8 },
+    urlButton: { padding: 8, marginRight: 12 },
+    expandedContent: { padding: 16, paddingTop: 0, borderTopWidth: 1, borderTopColor: '#2d2d2d' },
+    urlSection: { marginBottom: 16 },
+    sectionLabel: { fontSize: 14, fontWeight: '600', color: '#9ca3af', marginBottom: 8 },
+    urlText: { fontSize: 14, color: '#60a5fa', backgroundColor: '#1e3a5f', padding: 12, borderRadius: 8, fontFamily: 'monospace' },
+    fieldsSection: { marginBottom: 16 },
+    loadingFields: { flexDirection: 'row', alignItems: 'center', padding: 12, backgroundColor: '#2d2d2d', borderRadius: 8 },
+    loadingFieldsText: { marginLeft: 8, fontSize: 14, color: '#9ca3af' },
+    fieldItem: { marginBottom: 12 },
+    fieldHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+    fieldName: { fontSize: 14, fontWeight: '600', color: '#e2e8f0', flex: 1 },
+    fieldValueContainer: { flex: 2, backgroundColor: '#2d2d2d', padding: 12, borderRadius: 8, marginLeft: 12 },
+    fieldValue: { fontSize: 14, color: '#9ca3af' },
+    noDataText: { fontSize: 14, color: '#6b7280', fontStyle: 'italic', padding: 12, textAlign: 'center' },
+    emptyState: { alignItems: 'center', justifyContent: 'center', paddingVertical: 60 },
+    emptyTitle: { fontSize: 18, fontWeight: '600', color: '#6b7280', marginTop: 16, marginBottom: 8 },
+    emptyText: { fontSize: 14, color: '#4b5563', textAlign: 'center', maxWidth: 300 },
+    browseButton: { backgroundColor: '#4a6fa5', paddingHorizontal: 20, paddingVertical: 10, borderRadius: 8, marginTop: 16 },
+    browseButtonText: { color: 'white', fontSize: 14, fontWeight: '600' },
+    modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.7)', justifyContent: 'center', alignItems: 'center', padding: 20 },
+    modalContent: { backgroundColor: '#1a1a1a', borderRadius: 20, width: '100%', maxWidth: 400, maxHeight: '80%', padding: 24 },
+    modalTitle: { fontSize: 18, fontWeight: 'bold', color: '#f1f5f9', marginBottom: 16, textAlign: 'center' },
+    urlModalScroll: { maxHeight: 200, marginBottom: 20 },
+    fullUrlText: { fontSize: 14, color: '#e2e8f0', fontFamily: 'monospace', backgroundColor: '#2d2d2d', padding: 16, borderRadius: 8 },
+    modalCloseButton: { backgroundColor: '#4a6fa5', borderRadius: 12, padding: 16, alignItems: 'center' },
+    modalCloseButtonText: { color: 'white', fontSize: 16, fontWeight: '600' },
+    controlsRow: { flexDirection: 'row', alignItems: 'center' },
+    filterButton: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#1a1a1a', borderRadius: 12, paddingHorizontal: 16, paddingVertical: 12, borderWidth: 1, borderColor: '#2d2d2d' },
+    filterButtonActive: { backgroundColor: '#4a6fa5', borderColor: '#4a6fa5' },
+    filterButtonText: { marginLeft: 6, fontSize: 14, color: '#60a5fa', fontWeight: '500' },
+    filterButtonTextActive: { color: '#fff' },
+    filterBadge: { marginLeft: 6, backgroundColor: '#fff', borderRadius: 10, width: 20, height: 20, justifyContent: 'center', alignItems: 'center' },
+    filterBadgeText: { fontSize: 11, fontWeight: 'bold', color: '#4a6fa5' },
+    filterModalContent: { backgroundColor: '#1a1a1a', borderRadius: 20, width: '100%', maxWidth: 400, maxHeight: '85%', padding: 24 },
+    filterScroll: { marginBottom: 16 },
+    conditionRow: { marginBottom: 12, position: 'relative' },
+    fieldPickerButton: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', backgroundColor: '#2d2d2d', borderRadius: 10, paddingHorizontal: 14, paddingVertical: 10, borderWidth: 1, borderColor: '#3d3d3d', marginBottom: 8 },
+    fieldPickerText: { fontSize: 14, color: '#e2e8f0' },
+    fieldPickerPlaceholder: { color: '#6b7280' },
+    conditionValueInput: { backgroundColor: '#2d2d2d', borderRadius: 10, paddingHorizontal: 14, paddingVertical: 10, borderWidth: 1, borderColor: '#3d3d3d', fontSize: 14, color: '#e2e8f0', marginBottom: 8 },
+    rangeRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 8 },
+    rangeInput: { flex: 1, marginBottom: 0 },
+    rangeSeparator: { marginHorizontal: 8, fontSize: 16, color: '#6b7280' },
+    removeConditionButton: { position: 'absolute', top: 8, right: 8, padding: 4 },
+    fieldDropdown: { backgroundColor: '#1a1a1a', borderRadius: 10, borderWidth: 1, borderColor: '#2d2d2d', marginBottom: 8, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.3, shadowRadius: 4, elevation: 4 },
+    fieldDropdownItem: { paddingHorizontal: 14, paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: '#2d2d2d' },
+    fieldDropdownItemActive: { backgroundColor: '#1e3a5f' },
+    fieldDropdownText: { fontSize: 14, color: '#e2e8f0' },
+    fieldDropdownTextActive: { color: '#60a5fa', fontWeight: '600' },
+    addConditionButton: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', backgroundColor: '#1e3a5f', borderRadius: 10, paddingVertical: 12, borderWidth: 1, borderColor: '#4a6fa5', borderStyle: 'dashed', marginTop: 4 },
+    addConditionText: { marginLeft: 8, fontSize: 14, color: '#60a5fa', fontWeight: '500' },
+    applyButton: { backgroundColor: '#4a6fa5', borderRadius: 12, padding: 16, alignItems: 'center', marginBottom: 10 },
+    applyButtonText: { color: 'white', fontSize: 16, fontWeight: '600' },
+    resetButton: { backgroundColor: '#2d2d2d', borderRadius: 12, padding: 16, alignItems: 'center', borderWidth: 1, borderColor: '#3d3d3d' },
+    resetButtonText: { color: '#f87171', fontSize: 16, fontWeight: '500' },
+    comboContainer: { marginBottom: 8 },
+    comboChips: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginBottom: 4 },
+    comboChip: { paddingHorizontal: 12, paddingVertical: 6, borderRadius: 16, backgroundColor: '#2d2d2d', borderWidth: 1, borderColor: '#3d3d3d' },
+    comboChipActive: { backgroundColor: '#4a6fa5', borderColor: '#4a6fa5' },
+    comboChipText: { fontSize: 13, color: '#e2e8f0' },
+    comboChipTextActive: { color: '#fff' },
+    domainContainer: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#1e3a5f', paddingHorizontal: 8, paddingVertical: 3, borderRadius: 6, marginLeft: 8, maxWidth: '50%' },
+    domainText: { fontSize: 10, color: '#60a5fa', fontWeight: '500', marginLeft: 4, fontFamily: 'monospace' },
 });

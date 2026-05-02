@@ -17,6 +17,7 @@ import { Feather } from '@expo/vector-icons';
 import { WebView } from 'react-native-webview';
 import { useSites } from '@/contexts/SitesContext';
 import { apiService } from '@/lib/apiService';
+import { useTheme } from '@/contexts/ThemeContext';
 
 type TagField = {
     id: number;
@@ -134,6 +135,8 @@ true;
 
 export default function AddSiteScreen() {
     const insets = useSafeAreaInsets();
+    const { isDark } = useTheme();
+    const s = isDark ? darkStyles : lightStyles;
     const { fieldNames } = useSites();
     const [name, setName] = useState('');
     const [url, setUrl] = useState('');
@@ -220,29 +223,29 @@ export default function AddSiteScreen() {
     };
 
     return (
-        <SafeAreaView style={styles.container}>
+        <SafeAreaView style={s.container}>
             <StatusBar style="dark" />
 
-            <View style={styles.header}>
-                <Text style={styles.title}>Добавление сайта</Text>
+            <View style={s.header}>
+                <Text style={s.title}>Добавление сайта</Text>
                 <Feather name="plus-circle" size={26} color="#4a6fa5" />
             </View>
 
-            <ScrollView style={styles.scroll} contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
+            <ScrollView style={s.scroll} contentContainerStyle={s.scrollContent} showsVerticalScrollIndicator={false}>
 
                 {/* Основные данные */}
-                <View style={styles.card}>
-                    <Text style={styles.sectionLabel}>Основные данные</Text>
+                <View style={s.card}>
+                    <Text style={s.sectionLabel}>Основные данные</Text>
                     <TextInput
-                        style={styles.input}
+                        style={s.input}
                         placeholder="Название сайта"
                         placeholderTextColor="#95a5a6"
                         value={name}
                         onChangeText={setName}
                     />
-                    <View style={styles.urlRow}>
+                    <View style={s.urlRow}>
                         <TextInput
-                            style={[styles.input, styles.urlInput]}
+                            style={[s.input, s.urlInput]}
                             placeholder="URL объявления"
                             placeholderTextColor="#95a5a6"
                             value={urlInput}
@@ -253,45 +256,45 @@ export default function AddSiteScreen() {
                             textContentType="URL"
                             autoComplete="url"
                         />
-                        <TouchableOpacity style={styles.previewButton} onPress={openPreview}>
+                        <TouchableOpacity style={s.previewButton} onPress={openPreview}>
                             <Feather name="eye" size={18} color="white" />
                         </TouchableOpacity>
                     </View>
                     {url ? (
-                        <Text style={styles.urlConfirmed} numberOfLines={1}>
+                        <Text style={s.urlConfirmed} numberOfLines={1}>
                             <Feather name="check-circle" size={12} color="#27ae60" /> {url}
                         </Text>
                     ) : null}
                 </View>
 
                 {/* Параметры */}
-                <View style={styles.card}>
-                    <View style={styles.sectionRow}>
-                        <Text style={styles.sectionLabel}>Параметры</Text>
-                        <TouchableOpacity style={styles.addFieldButton} onPress={() => setFieldPickerVisible(true)}>
+                <View style={s.card}>
+                    <View style={s.sectionRow}>
+                        <Text style={s.sectionLabel}>Параметры</Text>
+                        <TouchableOpacity style={s.addFieldButton} onPress={() => setFieldPickerVisible(true)}>
                             <Feather name="plus" size={14} color="white" />
-                            <Text style={styles.addFieldButtonText}>Добавить поле</Text>
+                            <Text style={s.addFieldButtonText}>Добавить поле</Text>
                         </TouchableOpacity>
                     </View>
 
                     {fields.length === 0 && (
-                        <Text style={styles.emptyText}>Добавьте поля для парсинга</Text>
+                        <Text style={s.emptyText}>Добавьте поля для парсинга</Text>
                     )}
 
                     {fields.map(field => (
                         <TouchableOpacity
                             key={field.id}
-                            style={[styles.fieldCard, activeFieldId === field.id && styles.fieldCardActive]}
+                            style={[s.fieldCard, activeFieldId === field.id && s.fieldCardActive]}
                             onPress={() => setActiveFieldId(field.id)}
                             activeOpacity={0.8}
                         >
-                            <View style={styles.fieldHeader}>
-                                <View style={styles.fieldNameRow}>
+                            <View style={s.fieldHeader}>
+                                <View style={s.fieldNameRow}>
                                     <Feather name="tag" size={13} color={activeFieldId === field.id ? '#4a6fa5' : '#7f8c8d'} />
-                                    <Text style={[styles.fieldName, activeFieldId === field.id && styles.fieldNameActive]}>{field.name}</Text>
+                                    <Text style={[s.fieldName, activeFieldId === field.id && s.fieldNameActive]}>{field.name}</Text>
                                     {activeFieldId === field.id && (
-                                        <View style={styles.activeBadge}>
-                                            <Text style={styles.activeBadgeText}>активно</Text>
+                                        <View style={s.activeBadge}>
+                                            <Text style={s.activeBadgeText}>активно</Text>
                                         </View>
                                     )}
                                 </View>
@@ -300,7 +303,7 @@ export default function AddSiteScreen() {
                                 </TouchableOpacity>
                             </View>
                             <TextInput
-                                style={styles.selectorInput}
+                                style={s.selectorInput}
                                 placeholder="Селектор (XPath, CSS, text='...')"
                                 placeholderTextColor="#95a5a6"
                                 value={field.selector}
@@ -314,38 +317,38 @@ export default function AddSiteScreen() {
                     ))}
 
                     {fields.length > 0 && !activeFieldId && (
-                        <Text style={styles.hintText}>Нажмите на поле, затем тапните по элементу в предпросмотре</Text>
+                        <Text style={s.hintText}>Нажмите на поле, затем тапните по элементу в предпросмотре</Text>
                     )}
                     {activeField && (
-                        <Text style={styles.hintText}>
+                        <Text style={s.hintText}>
                             Активно: <Text style={{ fontWeight: '700', color: '#4a6fa5' }}>{activeField.name}</Text> — тапните по элементу в предпросмотре
                         </Text>
                     )}
                 </View>
 
-                <TouchableOpacity style={styles.primaryButton} onPress={saveSite} disabled={saving}>
-                    <Text style={styles.primaryButtonText}>{saving ? 'Сохранение...' : 'Добавить сайт'}</Text>
+                <TouchableOpacity style={s.primaryButton} onPress={saveSite} disabled={saving}>
+                    <Text style={s.primaryButtonText}>{saving ? 'Сохранение...' : 'Добавить сайт'}</Text>
                 </TouchableOpacity>
 
             </ScrollView>
 
             {/* Предпросмотр */}
             <Modal visible={previewVisible} animationType="slide" onRequestClose={() => setPreviewVisible(false)}>
-                <View style={[styles.previewContainer, { paddingTop: insets.top, paddingBottom: insets.bottom }]}>
-                    <View style={styles.previewHeader}>
-                        <TouchableOpacity onPress={() => setPreviewVisible(false)} style={styles.previewClose}>
+                <View style={[s.previewContainer, { paddingTop: insets.top, paddingBottom: insets.bottom }]}>
+                    <View style={s.previewHeader}>
+                        <TouchableOpacity onPress={() => setPreviewVisible(false)} style={s.previewClose}>
                             <Feather name="x" size={22} color="#1f2d3d" />
                         </TouchableOpacity>
                         <View style={{ flex: 1, alignItems: 'center' }}>
-                            <Text style={styles.previewTitle} numberOfLines={1}>
+                            <Text style={s.previewTitle} numberOfLines={1}>
                                 {activeField ? `Выбор: ${activeField.name}` : 'Предпросмотр'}
                             </Text>
-                            <Text style={styles.previewSubtitle} numberOfLines={1}>
+                            <Text style={s.previewSubtitle} numberOfLines={1}>
                                 {activeField ? 'Тапните на нужный элемент' : 'Сначала выберите поле в форме'}
                             </Text>
                         </View>
                         <TouchableOpacity
-                            style={styles.clearPopupsButton}
+                            style={s.clearPopupsButton}
                             onPress={() => webViewRef.current?.injectJavaScript(`
                                 (function() {
                                     var all = document.querySelectorAll('*');
@@ -373,7 +376,7 @@ export default function AddSiteScreen() {
                     <WebView
                         ref={webViewRef}
                         source={{ uri: webViewUrl }}
-                        style={styles.webView}
+                        style={s.webView}
                         injectedJavaScript={INJECTED_JS}
                         onMessage={onWebViewMessage}
                         onLoadStart={() => setWebViewLoading(true)}
@@ -384,17 +387,17 @@ export default function AddSiteScreen() {
                     />
 
                     {webViewLoading && (
-                        <View style={styles.webViewLoader}>
+                        <View style={s.webViewLoader}>
                             <ActivityIndicator size="large" color="#4a6fa5" />
                         </View>
                     )}
 
                     {activeField?.selector ? (
-                        <View style={styles.selectorPreview}>
-                            <Text style={styles.selectorPreviewLabel}>Выбранный селектор:</Text>
-                            <Text style={styles.selectorPreviewValue} numberOfLines={2}>{activeField.selector}</Text>
-                            <TouchableOpacity style={styles.doneButton} onPress={() => setPreviewVisible(false)}>
-                                <Text style={styles.doneButtonText}>Готово</Text>
+                        <View style={s.selectorPreview}>
+                            <Text style={s.selectorPreviewLabel}>Выбранный селектор:</Text>
+                            <Text style={s.selectorPreviewValue} numberOfLines={2}>{activeField.selector}</Text>
+                            <TouchableOpacity style={s.doneButton} onPress={() => setPreviewVisible(false)}>
+                                <Text style={s.doneButtonText}>Готово</Text>
                             </TouchableOpacity>
                         </View>
                     ) : null}
@@ -403,9 +406,9 @@ export default function AddSiteScreen() {
 
             {/* Модал выбора поля */}
             <Modal visible={fieldPickerVisible} transparent animationType="slide" onRequestClose={() => setFieldPickerVisible(false)}>
-                <View style={styles.modalBackdrop}>
-                    <View style={[styles.modalCard, { paddingBottom: Math.max(insets.bottom, 20) }]}>
-                        <Text style={styles.modalTitle}>Выберите параметр</Text>
+                <View style={s.modalBackdrop}>
+                    <View style={[s.modalCard, { paddingBottom: Math.max(insets.bottom, 20) }]}>
+                        <Text style={s.modalTitle}>Выберите параметр</Text>
                         <FlatList
                             data={fieldNames}
                             keyExtractor={item => String(item.Id ?? (item as any).id)}
@@ -414,7 +417,7 @@ export default function AddSiteScreen() {
                                 const added = fields.some(f => f.name === itemName);
                                 return (
                                     <TouchableOpacity
-                                        style={[styles.modalItem, added && styles.modalItemDisabled]}
+                                        style={[s.modalItem, added && s.modalItemDisabled]}
                                         onPress={() => {
                                             const id = item.Id ?? (item as any).id ?? 0;
                                             addField(itemName, id);
@@ -422,15 +425,15 @@ export default function AddSiteScreen() {
                                         }}
                                         disabled={added}
                                     >
-                                        <Text style={[styles.modalItemText, added && styles.modalItemTextDisabled]}>{itemName}</Text>
+                                        <Text style={[s.modalItemText, added && s.modalItemTextDisabled]}>{itemName}</Text>
                                         {added && <Feather name="check" size={16} color="#bdc3c7" />}
                                     </TouchableOpacity>
                                 );
                             }}
-                            ListEmptyComponent={<Text style={styles.emptyText}>Параметры не загружены</Text>}
+                            ListEmptyComponent={<Text style={s.emptyText}>Параметры не загружены</Text>}
                         />
-                        <TouchableOpacity style={styles.modalClose} onPress={() => setFieldPickerVisible(false)}>
-                            <Text style={styles.modalCloseText}>Закрыть</Text>
+                        <TouchableOpacity style={s.modalClose} onPress={() => setFieldPickerVisible(false)}>
+                            <Text style={s.modalCloseText}>Закрыть</Text>
                         </TouchableOpacity>
                     </View>
                 </View>
@@ -439,7 +442,7 @@ export default function AddSiteScreen() {
     );
 }
 
-const styles = StyleSheet.create({
+const lightStyles = StyleSheet.create({
     container: { flex: 1, backgroundColor: '#f0f4f8' },
     header: { paddingHorizontal: 20, paddingVertical: 16, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
     title: { fontSize: 22, fontWeight: '700', color: '#1f2d3d' },
@@ -490,4 +493,57 @@ const styles = StyleSheet.create({
     modalItemTextDisabled: { color: '#9aa5b4' },
     modalClose: { alignItems: 'center', paddingVertical: 16 },
     modalCloseText: { color: '#4a6fa5', fontWeight: '700', fontSize: 15 },
+});
+
+const darkStyles = StyleSheet.create({
+    container: { flex: 1, backgroundColor: '#0f0f0f' },
+    header: { paddingHorizontal: 20, paddingVertical: 16, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+    title: { fontSize: 22, fontWeight: '700', color: '#f1f5f9' },
+    scroll: { flex: 1 },
+    scrollContent: { padding: 16, gap: 16, paddingBottom: 40 },
+    card: { backgroundColor: '#1a1a1a', borderRadius: 18, padding: 16, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.2, shadowRadius: 8, elevation: 2 },
+    sectionLabel: { fontSize: 15, fontWeight: '700', color: '#f1f5f9', marginBottom: 12 },
+    sectionRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 },
+    input: { backgroundColor: '#2d2d2d', borderRadius: 12, padding: 14, borderWidth: 1, borderColor: '#3d3d3d', fontSize: 15, marginBottom: 10, color: '#e2e8f0' },
+    urlRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+    urlInput: { flex: 1, marginBottom: 0 },
+    previewButton: { width: 48, height: 48, borderRadius: 12, backgroundColor: '#4a6fa5', justifyContent: 'center', alignItems: 'center' },
+    urlConfirmed: { fontSize: 12, color: '#4ade80', marginTop: 6 },
+    addFieldButton: { flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: '#4a6fa5', paddingHorizontal: 14, paddingVertical: 8, borderRadius: 10 },
+    addFieldButtonText: { color: 'white', fontWeight: '600', fontSize: 13 },
+    emptyText: { color: '#6b7280', textAlign: 'center', paddingVertical: 8 },
+    hintText: { fontSize: 12, color: '#9ca3af', marginTop: 8, textAlign: 'center' },
+    fieldCard: { backgroundColor: '#2d2d2d', borderRadius: 14, padding: 12, marginBottom: 10, borderWidth: 1.5, borderColor: '#3d3d3d' },
+    fieldCardActive: { borderColor: '#4a6fa5', backgroundColor: '#1e3a5f' },
+    fieldHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 },
+    fieldNameRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+    fieldName: { fontWeight: '600', color: '#9ca3af', fontSize: 14 },
+    fieldNameActive: { color: '#60a5fa' },
+    activeBadge: { backgroundColor: '#4a6fa5', borderRadius: 6, paddingHorizontal: 6, paddingVertical: 2 },
+    activeBadgeText: { color: 'white', fontSize: 10, fontWeight: '700' },
+    selectorInput: { backgroundColor: '#1a1a1a', borderRadius: 10, padding: 10, borderWidth: 1, borderColor: '#3d3d3d', fontSize: 13, color: '#e2e8f0', minHeight: 40 },
+    primaryButton: { backgroundColor: '#4a6fa5', padding: 16, borderRadius: 14, alignItems: 'center' },
+    primaryButtonText: { color: 'white', fontWeight: '700', fontSize: 16 },
+    previewContainer: { flex: 1, backgroundColor: '#0f0f0f' },
+    previewHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 16, paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: '#2d2d2d' },
+    previewClose: { width: 36, height: 36, justifyContent: 'center', alignItems: 'center' },
+    clearPopupsButton: { width: 36, height: 36, justifyContent: 'center', alignItems: 'center' },
+    previewTitle: { textAlign: 'center', fontWeight: '700', fontSize: 15, color: '#f1f5f9' },
+    previewSubtitle: { textAlign: 'center', fontSize: 11, color: '#9ca3af', marginTop: 2 },
+    webView: { flex: 1 },
+    webViewLoader: { ...StyleSheet.absoluteFillObject, justifyContent: 'center', alignItems: 'center', backgroundColor: 'rgba(0,0,0,0.6)' },
+    selectorPreview: { padding: 16, borderTopWidth: 1, borderTopColor: '#2d2d2d', backgroundColor: '#1a1a1a' },
+    selectorPreviewLabel: { fontSize: 12, color: '#9ca3af', marginBottom: 4 },
+    selectorPreviewValue: { fontSize: 13, color: '#e2e8f0', fontWeight: '500', marginBottom: 12 },
+    doneButton: { backgroundColor: '#4a6fa5', padding: 14, borderRadius: 12, alignItems: 'center' },
+    doneButtonText: { color: 'white', fontWeight: '700' },
+    modalBackdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', justifyContent: 'flex-end' },
+    modalCard: { backgroundColor: '#1a1a1a', borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: 20, maxHeight: '70%' },
+    modalTitle: { fontSize: 18, fontWeight: '700', marginBottom: 12, color: '#f1f5f9' },
+    modalItem: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 14, borderBottomWidth: 1, borderBottomColor: '#2d2d2d' },
+    modalItemDisabled: { opacity: 0.5 },
+    modalItemText: { color: '#e2e8f0', fontSize: 15 },
+    modalItemTextDisabled: { color: '#6b7280' },
+    modalClose: { alignItems: 'center', paddingVertical: 16 },
+    modalCloseText: { color: '#60a5fa', fontWeight: '700', fontSize: 15 },
 });
