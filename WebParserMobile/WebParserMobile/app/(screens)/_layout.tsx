@@ -23,7 +23,7 @@ function AuthAwareTabs() {
     }, [token, userData?.role]);
 
     useEffect(() => {
-        if (!token && segments.includes('favorites')) {
+        if (!token && (segments as string[]).includes('favorites')) {
             router.replace('/(screens)');
         }
     }, [token, segments]);
