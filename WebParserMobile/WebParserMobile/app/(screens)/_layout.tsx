@@ -76,6 +76,10 @@ function AuthAwareTabs() {
                     ),
                 }}
             />
+            <Tabs.Screen
+                name="admin-users"
+                options={{ href: null }}
+            />
         </Tabs>
     );
 }

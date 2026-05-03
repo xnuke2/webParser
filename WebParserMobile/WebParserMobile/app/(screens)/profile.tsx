@@ -287,22 +287,14 @@ export default function ProfileScreen() {
                             <Text style={s.sectionTitle}>Панель администратора</Text>
                         </View>
 
-                        <Text style={s.adminText}>
-                            У вас есть права администратора. Вы можете управлять пользователями и настройками системы.
-                        </Text>
-
-                        <View style={s.adminFeatures}>
-                            {[
-                                { icon: 'users', text: 'Управление пользователями' },
-                                { icon: 'settings', text: 'Настройки системы' },
-                                { icon: 'bar-chart', text: 'Аналитика и отчеты' },
-                            ].map(({ icon, text }) => (
-                                <View key={text} style={s.adminFeature}>
-                                    <Feather name={icon as any} size={16} color="#e74c3c" />
-                                    <Text style={s.adminFeatureText}>{text}</Text>
-                                </View>
-                            ))}
-                        </View>
+                        <TouchableOpacity
+                            style={s.adminFeature}
+                            onPress={() => router.push('/(screens)/admin-users')}
+                        >
+                            <Feather name="users" size={16} color="#e74c3c" />
+                            <Text style={s.adminFeatureText}>Управление пользователями</Text>
+                            <Feather name="chevron-right" size={16} color="#e74c3c" style={{ marginLeft: 'auto' }} />
+                        </TouchableOpacity>
                     </View>
                 )}
 
@@ -483,8 +475,6 @@ const base = {
         padding: 20,
         borderWidth: 1,
     },
-    adminText: { fontSize: 14, lineHeight: 20, marginBottom: 16 },
-    adminFeatures: { gap: 12 },
     adminFeature: {
         flexDirection: 'row' as const,
         alignItems: 'center' as const,
@@ -535,7 +525,6 @@ const lightStyles = StyleSheet.create({
     featureText: { ...base.featureText, color: '#2c3e50' },
     registerButton: { ...base.registerButton, backgroundColor: 'white' },
     adminSection: { ...base.adminSection, backgroundColor: '#fff5f5', borderColor: '#ffebee' },
-    adminText: { ...base.adminText, color: '#666' },
     appInfo: { ...base.appInfo, backgroundColor: 'white' },
     appInfoTitle: { ...base.appInfoTitle, color: '#2c3e50' },
     appInfoText: { ...base.appInfoText, color: '#7f8c8d' },
@@ -566,7 +555,6 @@ const darkStyles = StyleSheet.create({
     featureText: { ...base.featureText, color: '#e2e8f0' },
     registerButton: { ...base.registerButton, backgroundColor: 'transparent' },
     adminSection: { ...base.adminSection, backgroundColor: '#2a1515', borderColor: '#3d1f1f' },
-    adminText: { ...base.adminText, color: '#9ca3af' },
     appInfo: { ...base.appInfo, backgroundColor: '#1a1a1a' },
     appInfoTitle: { ...base.appInfoTitle, color: '#f1f5f9' },
     appInfoText: { ...base.appInfoText, color: '#9ca3af' },

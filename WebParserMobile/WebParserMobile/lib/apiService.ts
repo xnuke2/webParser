@@ -50,6 +50,17 @@ export interface AnalyzedField {
     FieldNameId: number | null;
 }
 
+export interface User {
+    Id: number;
+    Login: string;
+    RoleId: number;
+}
+
+export interface Role {
+    Id: number;
+    Name: string;
+}
+
 export interface ParsedDataItem {
     SiteId: number;
     Field: string;
@@ -489,6 +500,40 @@ class ApiService {
                 console.error('Error reading response text:', textError);
             }
             throw new Error(errorMessage);
+        }
+    }
+
+    // User management methods (admin only)
+    async getUsers(): Promise<User[]> {
+        const response = await this.fetchWithTokenRefresh('/api/UserContoller/all');
+        if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+        return response.json();
+    }
+
+    async getRoles(): Promise<Role[]> {
+        const response = await this.fetchWithTokenRefresh('/api/Role/all');
+        if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+        return response.json();
+    }
+
+    async updateUserRole(userId: number, roleId: number): Promise<void> {
+        const response = await this.fetchWithTokenRefresh('/api/UserContoller', {
+            method: 'PUT',
+            body: JSON.stringify({ Id: userId, RoleId: roleId }),
+        });
+        if (!response.ok) {
+            const text = await response.text();
+            throw new Error(text || `Ошибка обновления роли: ${response.status}`);
+        }
+    }
+
+    async deleteUser(userId: number): Promise<void> {
+        const response = await this.fetchWithTokenRefresh(`/api/UserContoller?id=${userId}`, {
+            method: 'DELETE',
+        });
+        if (!response.ok) {
+            const text = await response.text();
+            throw new Error(text || `Ошибка удаления пользователя: ${response.status}`);
         }
     }
 
