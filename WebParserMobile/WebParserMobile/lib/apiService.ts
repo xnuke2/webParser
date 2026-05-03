@@ -4,7 +4,7 @@ import { Platform } from 'react-native';
 
 const API_URL = Platform.select({
     ios: 'http://192.168.31.54:8088',
-    android: 'http://172.20.10.3:8088',
+    android: 'http://10.0.2.2:8088',
     web: 'http://localhost:8088',
 });
 
@@ -82,6 +82,9 @@ export interface AuthResult {
 }
 
 class ApiService {
+    // Флаг и очередь реализуют паттерн "одновременная очередь при refresh":
+    // если несколько запросов одновременно получили 401, только первый запускает refresh,
+    // остальные встают в очередь и ждут результата. Это предотвращает гонку запросов.
     private isRefreshing = false;
     private refreshPromise: Promise<string> | null = null;
     private failedQueue: Array<{ resolve: (value: string) => void; reject: (reason?: any) => void }> = [];
@@ -132,6 +135,9 @@ class ApiService {
         await SecureStore.deleteItemAsync('userData');
     }
 
+    // Разрешает или отклоняет все запросы из очереди одновременно.
+    // Если refresh прошёл успешно — все повторяют запрос с новым токеном.
+    // Если refresh провалился — все получают одну и ту же ошибку.
     private processQueue(error: any, token: string | null = null) {
         this.failedQueue.forEach(prom => {
             if (error) {
@@ -197,6 +203,12 @@ class ApiService {
         }
     }
 
+    // Основной метод для запросов, требующих авторизацию.
+    // Три сценария:
+    // 1. Нет токена → запрос без авторизации (публичные эндпоинты)
+    // 2. Токен валиден → запрос проходит успешно
+    // 3. Токен просрочен (401) → обновляем токен и повторяем запрос.
+    //    Если refresh уже идёт — встаём в очередь, а не запускаем ещё один.
     private async fetchWithTokenRefresh(endpoint: string, options: RequestInit = {}): Promise<Response> {
         let { accessToken } = await this.getTokens();
 
@@ -226,9 +238,9 @@ class ApiService {
 
         this.log('Ответ', { endpoint, status: response.status });
 
-        // Если токен истек (401)
+        // Токен просрочен (401) — нужно обновить
         if (response.status === 401) {
-            // Если уже идёт refresh — встаём в очередь и ждём его результата
+            // Если refresh уже идёт — встаём в очередь вместо запуска ещё одного refresh
             if (this.isRefreshing) {
                 this.log('Ожидание обновления токена...');
                 return new Promise<Response>((resolve, reject) => {
@@ -321,8 +333,10 @@ class ApiService {
         return data;
     }
 
+    // Переиспользуем уже идущий refresh, если он есть.
+    // Без этого два вызова refreshTokens() одновременно приведут к двум запросам /Refresh,
+    // что может вызвать конфликт при ротации токена на сервере.
     async refreshTokens(): Promise<TokenData> {
-        // Переиспользуем уже идущий refresh если он есть
         if (!this.refreshPromise) {
             this.isRefreshing = true;
             this.refreshPromise = this.refreshAccessToken().finally(() => {
@@ -383,6 +397,8 @@ class ApiService {
         }
 
         const text = await response.text();
+        // Маппинг ошибок сервера на понятные русские сообщения.
+        // Незнакомые ошибки пробрасываются как есть.
         const errorMap: Record<string, string> = {
             'Login is already occupied': 'Этот логин уже занят',
         };
@@ -514,6 +530,7 @@ class ApiService {
         return response.json();
     }
 
+    // Внимание: FaforiteSite — опечатка в бэкенде. Не исправлять на FavoriteSite!
     async getFavoriteSites(): Promise<FavoriteSite[]> {
         const response = await this.fetchWithTokenRefresh('/api/FaforiteSite/my');
         if (!response.ok) {

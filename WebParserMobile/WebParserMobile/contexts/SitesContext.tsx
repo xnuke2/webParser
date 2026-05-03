@@ -2,6 +2,7 @@
 import React, { createContext, useContext, useState, useCallback, useEffect } from 'react';
 import { apiService, Site, SiteField, FieldName, ParsedDataItem } from '../lib/apiService';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { useAuth } from './AuthContext';
 
 interface SitesContextType {
     sites: Site[];
@@ -32,6 +33,7 @@ export const useSites = () => {
 };
 
 export const SitesProvider = ({ children }: { children: React.ReactNode }) => {
+    const { token } = useAuth();
     const [sites, setSites] = useState<Site[]>([]);
     const [favoriteSiteIds, setFavoriteSiteIds] = useState<number[]>([]);
     const [fieldNames, setFieldNames] = useState<FieldName[]>([]);
@@ -40,14 +42,21 @@ export const SitesProvider = ({ children }: { children: React.ReactNode }) => {
     const [error, setError] = useState<string | null>(null);
 
     const PARSED_DATA_CACHE_KEY = 'parsedData_cache';
-    const PARSED_DATA_TTL = 30 * 60 * 1000; // 30 минут
+    const PARSED_DATA_TTL = 30 * 60 * 1000; // Кэш спарсенных данных на 30 минут
 
     const fetchSites = useCallback(async () => {
         setLoading(true);
         setError(null);
 
+        const timeoutPromise = new Promise<never>((_, reject) =>
+            setTimeout(() => reject(new Error('Превышено время ожидания')), 10000)
+        );
+
         try {
-            const data = await apiService.getAllSites();
+            const data = await Promise.race([
+                apiService.getAllSites(),
+                timeoutPromise,
+            ]);
             setSites(data);
         } catch (err: any) {
             setError(err.message || 'Ошибка при загрузке данных');
@@ -77,7 +86,8 @@ export const SitesProvider = ({ children }: { children: React.ReactNode }) => {
 
     const fetchAllParsedData = useCallback(async () => {
         try {
-            // Проверяем кэш
+            // Стратегия cache-first: сначала проверяем кэш в AsyncStorage.
+            // Если данные свежие (< 30 мин) — возвращаем без запроса к серверу.
             const cached = await AsyncStorage.getItem(PARSED_DATA_CACHE_KEY);
             if (cached) {
                 const { data, timestamp } = JSON.parse(cached);
@@ -86,7 +96,7 @@ export const SitesProvider = ({ children }: { children: React.ReactNode }) => {
                     return;
                 }
             }
-            // Загружаем с сервера
+            // Кэш просрочен или пуст — загружаем с сервера и обновляем кэш
             const data = await apiService.getAllParsedData();
             setAllParsedData(data);
             await AsyncStorage.setItem(PARSED_DATA_CACHE_KEY, JSON.stringify({ data, timestamp: Date.now() }));
@@ -97,7 +107,8 @@ export const SitesProvider = ({ children }: { children: React.ReactNode }) => {
 
     const fetchFavoriteSites = async () => {
         try {
-            // Проверяем, есть ли токен перед запросом
+            // Проверяем токен до запроса — без него сервер вернёт 401,
+            // а для анонимных пользователей избранное просто не существует.
             const { token } = await apiService.getStoredAuthData();
             if (!token) {
                 setFavoriteSiteIds([]);
@@ -119,7 +130,8 @@ export const SitesProvider = ({ children }: { children: React.ReactNode }) => {
     };
 
     const removeFromFavorites = async (siteId: number): Promise<void> => {
-        // Оптимистичное обновление UI
+        // Оптимистичное обновление: убираем из UI сразу, не дожидаясь ответа сервера.
+        // Если сервер вернёт ошибку — возвращаем сайт обратно в избранное.
         setFavoriteSiteIds(prev => {
             const newIds = prev.filter(id => id !== siteId);
             return newIds;
@@ -128,7 +140,7 @@ export const SitesProvider = ({ children }: { children: React.ReactNode }) => {
         try {
             await apiService.removeFavoriteSite(siteId);
         } catch (error: any) {
-            // Откатываем оптимистичное обновление при ошибке
+            // Откат при ошибке: возвращаем siteId в список избранного
             setFavoriteSiteIds(prev => {
                 if (!prev.includes(siteId)) {
                     return [...prev, siteId];
@@ -153,16 +165,15 @@ export const SitesProvider = ({ children }: { children: React.ReactNode }) => {
         fetchSites();
         fetchFieldNames();
         fetchAllParsedData();
-
-        const checkAndLoadFavorites = async () => {
-            const { token } = await apiService.getStoredAuthData();
-            if (token) {
-                fetchFavoriteSites();
-            }
-        };
-
-        checkAndLoadFavorites();
     }, []);
+
+    useEffect(() => {
+        if (token) {
+            fetchFavoriteSites();
+        } else {
+            setFavoriteSiteIds([]);
+        }
+    }, [token]);
 
     return (
         <SitesContext.Provider value={{

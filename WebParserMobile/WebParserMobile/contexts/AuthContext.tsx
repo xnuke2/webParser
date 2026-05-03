@@ -33,7 +33,9 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     const [userData, setUserData] = useState<UserData | null>(null);
     const [isLoading, setIsLoading] = useState(true);
     const [isUserInfoLoading, setIsUserInfoLoading] = useState(false);
-    const [userInfoRequested, setUserInfoRequested] = useState(false); // Добавляем флаг
+    // Флаг предотвращает параллельные запросы /Authentication/my.
+    // Без него навигация между экранами может запустить 3-4 одинаковых запроса одновременно.
+    const [userInfoRequested, setUserInfoRequested] = useState(false);
 
     // Функция для получения информации о пользователе без создания цикла
     // Убираем useCallback для fetchUserInfo или добавляем правильную зависимость
@@ -52,7 +54,8 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
         const lastUpdateTime = userData?._lastUpdate || 0;
         const now = Date.now();
 
-        // Обновляем не чаще чем раз в 30 секунд
+        // Троттлинг: не чаще раза в 30 секунд.
+        // Предотвращает лишние запросы при частых переключениях между экранами.
         if (now - lastUpdateTime < 30 * 1000) {
             console.log('[Auth] Информация недавно обновлялась, пропускаем');
             return;
@@ -72,7 +75,8 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
                 _lastUpdate: now
             };
 
-            // Сравниваем данные, чтобы избежать ненужных обновлений
+            // Сравниваем JSON старых и новых данных, чтобы не вызывать лишний setState.
+            // Без этой проверки каждый fetchUserInfo вызовет ре-рендер всего дерева компонентов.
             if (JSON.stringify(userData) !== JSON.stringify(updatedUserInfo)) {
                 setUserData(updatedUserInfo);
                 await SecureStore.setItemAsync('userData', JSON.stringify(updatedUserInfo));
@@ -84,15 +88,15 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
             console.error('[Auth] Ошибка получения информации о пользователе:', error);
         } finally {
             setIsUserInfoLoading(false);
-            // Сбрасываем флаг с задержкой, чтобы избежать слишком частых запросов
+            // Задержка 1с перед сбросом флага — защита от быстрых повторных запросов
             setTimeout(() => setUserInfoRequested(false), 1000);
         }
     }, [token, userData]); // Добавляем userData в зависимости
 
-    // Загрузка данных аутентификации при монтировании
+    // Загрузка данных аутентификации при монтировании провайдера.
     const loadAuthData = useCallback(async () => {
-        // Wait for the app to become interactive before accessing SecureStore.
-        // iOS throws "User interaction is not allowed" if SecureStore is read too early.
+        // Задержка 300мс перед доступом к SecureStore обязательна на iOS —
+        // иначе получаем ошибку "User interaction is not allowed" при запуске приложения.
         await new Promise(resolve => setTimeout(resolve, 300));
         try {
             const { token: storedToken, userData: storedUserData } = await apiService.getStoredAuthData();
@@ -105,7 +109,11 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
             setUserData(storedUserData);
 
             if (storedToken) {
-                await fetchUserInfo();
+                // Таймаут 5с — если fetchUserInfo зависнет (нет сети), не блокируем приложение
+                await Promise.race([
+                    fetchUserInfo(),
+                    new Promise(resolve => setTimeout(resolve, 5000))
+                ]);
             }
         } catch (error) {
             console.error('[Auth] Ошибка загрузки данных аутентификации:', error);

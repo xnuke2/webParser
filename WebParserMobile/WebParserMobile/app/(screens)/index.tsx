@@ -439,6 +439,7 @@ export default function Index() {
                                                 <TextInput
                                                     style={[s.conditionValueInput, s.rangeInput]}
                                                     placeholder="От"
+                                                    placeholderTextColor={isDark ? '#6b7280' : '#95a5a6'}
                                                     value={condition.valueFrom}
                                                     onChangeText={(v) => updateConditionValueFrom(condition.id, v)}
                                                     keyboardType="numeric"
@@ -447,6 +448,7 @@ export default function Index() {
                                                 <TextInput
                                                     style={[s.conditionValueInput, s.rangeInput]}
                                                     placeholder="До"
+                                                    placeholderTextColor={isDark ? '#6b7280' : '#95a5a6'}
                                                     value={condition.valueTo}
                                                     onChangeText={(v) => updateConditionValueTo(condition.id, v)}
                                                     keyboardType="numeric"
@@ -457,6 +459,7 @@ export default function Index() {
                                                 <TextInput
                                                     style={s.conditionValueInput}
                                                     placeholder="Значение"
+                                                    placeholderTextColor={isDark ? '#6b7280' : '#95a5a6'}
                                                     value={condition.value}
                                                     onChangeText={(v) => updateConditionValue(condition.id, v)}
                                                 />
@@ -478,6 +481,7 @@ export default function Index() {
                                             <TextInput
                                                 style={s.conditionValueInput}
                                                 placeholder="Значение"
+                                                placeholderTextColor={isDark ? '#6b7280' : '#95a5a6'}
                                                 value={condition.value}
                                                 onChangeText={(v) => updateConditionValue(condition.id, v)}
                                             />
