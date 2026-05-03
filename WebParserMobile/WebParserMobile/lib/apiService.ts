@@ -72,6 +72,7 @@ export interface AuthResult {
 
 class ApiService {
     private isRefreshing = false;
+    private refreshPromise: Promise<string> | null = null;
     private failedQueue: Array<{ resolve: (value: string) => void; reject: (reason?: any) => void }> = [];
 
     private enableLogging = true;
@@ -214,19 +215,46 @@ class ApiService {
 
         this.log('Ответ', { endpoint, status: response.status });
 
-        // Если токен истек (401), пробуем обновить
-        if (response.status === 401 && !this.isRefreshing) {
+        // Если токен истек (401)
+        if (response.status === 401) {
+            // Если уже идёт refresh — встаём в очередь и ждём его результата
+            if (this.isRefreshing) {
+                this.log('Ожидание обновления токена...');
+                return new Promise<Response>((resolve, reject) => {
+                    this.failedQueue.push({
+                        resolve: async (newToken: string) => {
+                            try {
+                                const retryResponse = await fetch(`${API_URL}${endpoint}`, {
+                                    ...options,
+                                    headers: {
+                                        'Content-Type': 'application/json',
+                                        'Authorization': `Bearer ${newToken}`,
+                                        ...options.headers,
+                                    },
+                                });
+                                resolve(retryResponse);
+                            } catch (error) {
+                                reject(error);
+                            }
+                        },
+                        reject: (error) => reject(error)
+                    });
+                });
+            }
+
             this.log('Токен истек, пытаемся обновить');
             this.isRefreshing = true;
+            // Один промис на все параллельные вызовы
+            this.refreshPromise = this.refreshAccessToken();
 
             try {
-                const newAccessToken = await this.refreshAccessToken();
+                const newAccessToken = await this.refreshPromise;
                 this.isRefreshing = false;
+                this.refreshPromise = null;
                 this.processQueue(null, newAccessToken);
 
                 this.log('Повторяем запрос с новым токеном');
 
-                // Повторяем запрос с новым токеном
                 response = await fetch(`${API_URL}${endpoint}`, {
                     ...options,
                     headers: {
@@ -239,35 +267,11 @@ class ApiService {
                 this.log('Повторный ответ', { endpoint, status: response.status });
             } catch (refreshError) {
                 this.isRefreshing = false;
+                this.refreshPromise = null;
                 this.processQueue(refreshError, null);
                 this.log('Обновление не удалось', refreshError);
                 throw refreshError;
             }
-        }
-
-        // Если токен истек и мы уже обновляем
-        if (response.status === 401 && this.isRefreshing) {
-            this.log('Ожидание обновления токена...');
-            return new Promise<Response>((resolve, reject) => {
-                this.failedQueue.push({
-                    resolve: async (newToken: string) => {
-                        try {
-                            const retryResponse = await fetch(`${API_URL}${endpoint}`, {
-                                ...options,
-                                headers: {
-                                    'Content-Type': 'application/json',
-                                    'Authorization': `Bearer ${newToken}`,
-                                    ...options.headers,
-                                },
-                            });
-                            resolve(retryResponse);
-                        } catch (error) {
-                            reject(error);
-                        }
-                    },
-                    reject: (error) => reject(error)
-                });
-            });
         }
 
         return response;
@@ -307,19 +311,26 @@ class ApiService {
     }
 
     async refreshTokens(): Promise<TokenData> {
-        return await this.refreshAccessToken().then(accessToken => {
-            // Получаем обновленные токены из хранилища
-            return this.getTokens().then(({ accessToken, refreshToken }) => {
-                if (!accessToken || !refreshToken) {
-                    throw new Error('Токены не найдены');
-                }
-                return {
-                    AccessToken: accessToken,
-                    RefreshToken: refreshToken,
-                    Username: '' // Мы не знаем имя пользователя здесь
-                };
+        // Переиспользуем уже идущий refresh если он есть
+        if (!this.refreshPromise) {
+            this.isRefreshing = true;
+            this.refreshPromise = this.refreshAccessToken().finally(() => {
+                this.isRefreshing = false;
+                this.refreshPromise = null;
             });
-        });
+        }
+
+        await this.refreshPromise;
+
+        const { accessToken, refreshToken } = await this.getTokens();
+        if (!accessToken || !refreshToken) {
+            throw new Error('Токены не найдены');
+        }
+        return {
+            AccessToken: accessToken,
+            RefreshToken: refreshToken,
+            Username: ''
+        };
     }
 
     async revokeTokens(): Promise<void> {

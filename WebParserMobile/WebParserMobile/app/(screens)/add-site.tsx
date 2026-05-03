@@ -1,7 +1,6 @@
 import React, { useRef, useState } from 'react';
 import {
     Alert,
-    FlatList,
     Modal,
     ScrollView,
     StyleSheet,
@@ -24,15 +23,21 @@ type TagField = {
     name: string;
     fieldNameId: number;
     selector: string;
+    previewText: string;
 };
 
-// JS инжектируется в WebView — подсвечивает элементы при наведении и отправляет селектор при клике
+// JS инжектируется в WebView — подсвечивает элементы при наведении, отправляет селектор при клике,
+// подсвечивает зелёным уже выбранные элементы
 const INJECTED_JS = `
 (function() {
     if (window.__selectorInjected) return;
     window.__selectorInjected = true;
 
-    // Убираем попапы и оверлеи
+    // fieldId -> { selector, color }
+    window.__fieldSelectors = {};
+    var COLORS = ['#27ae60','#2980b9','#8e44ad','#e67e22','#c0392b','#16a085','#d35400','#2c3e50'];
+    var colorIndex = 0;
+
     function removeOverlays() {
         var all = document.querySelectorAll('*');
         for (var i = 0; i < all.length; i++) {
@@ -42,48 +47,36 @@ const INJECTED_JS = `
             var pos = style.position;
             if ((pos === 'fixed' || pos === 'absolute') && zIndex > 10) {
                 var rect = el.getBoundingClientRect();
-                var area = rect.width * rect.height;
-                // Убираем только большие оверлеи (больше 30% экрана)
-                if (area > window.innerWidth * window.innerHeight * 0.3) {
+                if (rect.width * rect.height > window.innerWidth * window.innerHeight * 0.3) {
                     el.style.display = 'none';
                 }
             }
         }
-        // Восстанавливаем скролл body
         document.body.style.overflow = 'auto';
         document.documentElement.style.overflow = 'auto';
     }
 
-    // Запускаем сразу и через паузу (после загрузки попапов)
     removeOverlays();
     setTimeout(removeOverlays, 1500);
     setTimeout(removeOverlays, 3000);
 
-    var highlighted = null;
+    var hovered = null;
 
     function getSelector(el) {
         if (!el || el === document.body) return 'body';
-
-        // Ищем ближайший элемент (сам или родитель) с уникальным селектором
         var current = el;
         while (current && current !== document.body) {
-            // 1. id
             if (current.id) return '#' + current.id;
-
             var tag = current.tagName.toLowerCase();
             if (current.classList && current.classList.length > 0) {
                 var classes = Array.from(current.classList)
                     .filter(function(c) { return /^[a-zA-Z_-][a-zA-Z0-9_-]*$/.test(c); });
-
-                // 2. Уникальный одиночный класс
                 for (var i = 0; i < classes.length; i++) {
                     var c1 = '.' + classes[i];
                     if (document.querySelectorAll(c1).length === 1) return c1;
                     var c2 = tag + '.' + classes[i];
                     if (document.querySelectorAll(c2).length === 1) return c2;
                 }
-
-                // 3. Уникальная комбинация двух классов
                 for (var i = 0; i < classes.length - 1; i++) {
                     var combo = tag + '.' + classes[i] + '.' + classes[i+1];
                     if (document.querySelectorAll(combo).length === 1) return combo;
@@ -91,8 +84,6 @@ const INJECTED_JS = `
             }
             current = current.parentElement;
         }
-
-        // Fallback — берём первый класс самого элемента или путь из 2 уровней
         var tag = el.tagName.toLowerCase();
         if (el.classList && el.classList.length > 0) {
             var classes = Array.from(el.classList)
@@ -112,19 +103,147 @@ const INJECTED_JS = `
         return (el.innerText || el.textContent || '').trim().substring(0, 80);
     }
 
-    document.addEventListener('mouseover', function(e) {
-        if (highlighted) {
-            highlighted.style.outline = '';
-            highlighted.style.cursor = '';
+    // Перерисовываем все зелёные рамки по сохранённым селекторам
+    function redrawHighlights() {
+        // Сначала снимаем все data-field-highlight рамки
+        var marked = document.querySelectorAll('[data-field-highlight]');
+        for (var i = 0; i < marked.length; i++) {
+            marked[i].style.outline = '';
+            marked[i].removeAttribute('data-field-highlight');
         }
-        highlighted = e.target;
-        highlighted.style.outline = '2px solid #4a6fa5';
-        highlighted.style.cursor = 'pointer';
+        // Рисуем заново
+        for (var fid in window.__fieldSelectors) {
+            var entry = window.__fieldSelectors[fid];
+            try {
+                var els = document.querySelectorAll(entry.selector);
+                for (var j = 0; j < els.length; j++) {
+                    els[j].style.outline = '2px solid ' + entry.color;
+                    els[j].setAttribute('data-field-highlight', fid);
+                }
+            } catch(e) {}
+        }
+    }
+
+    // Команды от React Native: { cmd: 'setSelector', fieldId, selector } | { cmd: 'removeSelector', fieldId }
+    document.addEventListener('message', function(e) {
+        try {
+            var msg = JSON.parse(e.data);
+            if (msg.cmd === 'setSelector') {
+                if (!window.__fieldSelectors[msg.fieldId]) {
+                    window.__fieldSelectors[msg.fieldId] = { selector: msg.selector, color: COLORS[colorIndex % COLORS.length] };
+                    colorIndex++;
+                } else {
+                    window.__fieldSelectors[msg.fieldId].selector = msg.selector;
+                }
+                redrawHighlights();
+            } else if (msg.cmd === 'removeSelector') {
+                delete window.__fieldSelectors[msg.fieldId];
+                redrawHighlights();
+            }
+        } catch(e) {}
+    });
+    // iOS использует window, Android — document
+    window.addEventListener('message', function(e) {
+        try {
+            var msg = JSON.parse(e.data);
+            if (msg.cmd === 'setSelector') {
+                if (!window.__fieldSelectors[msg.fieldId]) {
+                    window.__fieldSelectors[msg.fieldId] = { selector: msg.selector, color: COLORS[colorIndex % COLORS.length] };
+                    colorIndex++;
+                } else {
+                    window.__fieldSelectors[msg.fieldId].selector = msg.selector;
+                }
+                redrawHighlights();
+            } else if (msg.cmd === 'removeSelector') {
+                delete window.__fieldSelectors[msg.fieldId];
+                redrawHighlights();
+            }
+        } catch(e) {}
+    });
+
+    document.addEventListener('mouseover', function(e) {
+        if (hovered && !hovered.getAttribute('data-field-highlight')) {
+            hovered.style.outline = '';
+            hovered.style.cursor = '';
+        }
+        hovered = e.target;
+        if (!hovered.getAttribute('data-field-highlight')) {
+            hovered.style.outline = '2px solid #4a6fa5';
+        }
+        hovered.style.cursor = 'pointer';
     }, true);
+
+    // Пытаемся найти табличный паттерн: <tr><td>Метка</td><td>Значение</td></tr>
+    // или dl/dt/dd паттерн. Если тапнули на значение — возвращаем text='Метка'
+    function tryTablePattern(el) {
+        // Ищем ближайший td
+        var td = el;
+        while (td && td !== document.body && td.tagName !== 'TD') td = td.parentElement;
+        if (td && td.tagName === 'TD') {
+            var row = td.parentElement;
+            if (row && (row.tagName === 'TR')) {
+                var cells = row.querySelectorAll('td');
+                if (cells.length >= 2) {
+                    // Если тапнули на 2-ю+ ячейку — берём текст 1-й как метку
+                    var cellIndex = Array.from(cells).indexOf(td);
+                    if (cellIndex > 0) {
+                        var labelCell = cells[0];
+                        var labelText = (labelCell.innerText || labelCell.textContent || '').trim();
+                        var valueText = getText(td);
+                        if (labelText && labelText.length < 50) {
+                            return { selector: "text='" + labelText + "'", text: valueText };
+                        }
+                    }
+                    // Если тапнули на 1-ю ячейку — берём текст 2-й как значение
+                    if (cellIndex === 0 && cells.length >= 2) {
+                        var labelText = (td.innerText || td.textContent || '').trim();
+                        var valueText = getText(cells[1]);
+                        if (labelText && labelText.length < 50) {
+                            return { selector: "text='" + labelText + "'", text: valueText };
+                        }
+                    }
+                }
+            }
+        }
+
+        // dl/dt/dd паттерн
+        var dtEl = el;
+        while (dtEl && dtEl !== document.body && dtEl.tagName !== 'DT' && dtEl.tagName !== 'DD') dtEl = dtEl.parentElement;
+        if (dtEl) {
+            if (dtEl.tagName === 'DD') {
+                // ищем предыдущий dt
+                var prev = dtEl.previousElementSibling;
+                while (prev && prev.tagName !== 'DT') prev = prev.previousElementSibling;
+                if (prev) {
+                    var labelText = (prev.innerText || prev.textContent || '').trim();
+                    var valueText = getText(dtEl);
+                    if (labelText && labelText.length < 50) {
+                        return { selector: "dt:" + labelText, text: valueText };
+                    }
+                }
+            }
+            if (dtEl.tagName === 'DT') {
+                var next = dtEl.nextElementSibling;
+                while (next && next.tagName !== 'DD') next = next.nextElementSibling;
+                var labelText = (dtEl.innerText || dtEl.textContent || '').trim();
+                var valueText = next ? getText(next) : '';
+                if (labelText && labelText.length < 50) {
+                    return { selector: "dt:" + labelText, text: valueText };
+                }
+            }
+        }
+
+        return null;
+    }
 
     document.addEventListener('click', function(e) {
         e.preventDefault();
         e.stopPropagation();
+        var tableResult = tryTablePattern(e.target);
+        if (tableResult) {
+            window.ReactNativeWebView.postMessage(JSON.stringify(tableResult));
+            return;
+        }
         var selector = getSelector(e.target);
         var text = getText(e.target);
         window.ReactNativeWebView.postMessage(JSON.stringify({ selector: selector, text: text }));
@@ -144,7 +263,6 @@ export default function AddSiteScreen() {
     const [webViewUrl, setWebViewUrl] = useState('');
     const [fields, setFields] = useState<TagField[]>([]);
     const [activeFieldId, setActiveFieldId] = useState<number | null>(null);
-    const [fieldPickerVisible, setFieldPickerVisible] = useState(false);
     const [previewVisible, setPreviewVisible] = useState(false);
     const [webViewLoading, setWebViewLoading] = useState(false);
     const [saving, setSaving] = useState(false);
@@ -154,18 +272,27 @@ export default function AddSiteScreen() {
 
     const addField = (fieldName: string, fieldNameId: number) => {
         if (fields.some(f => f.name === fieldName)) return;
-        const newField = { id: Date.now(), name: fieldName, fieldNameId, selector: '' };
+        const newField = { id: Date.now(), name: fieldName, fieldNameId, selector: '', previewText: '' };
         setFields(prev => [...prev, newField]);
         setActiveFieldId(newField.id);
     };
 
-    const updateSelector = (fieldId: number, selector: string) => {
-        setFields(prev => prev.map(f => f.id === fieldId ? { ...f, selector } : f));
+    const updateSelector = (fieldId: number, selector: string, previewText = '') => {
+        setFields(prev => prev.map(f => f.id === fieldId ? { ...f, selector, previewText } : f));
+        // Сообщаем WebView чтобы подсветил элемент
+        if (selector) {
+            webViewRef.current?.injectJavaScript(
+                `window.dispatchEvent(new MessageEvent('message', { data: JSON.stringify({ cmd: 'setSelector', fieldId: ${fieldId}, selector: ${JSON.stringify(selector)} }) })); true;`
+            );
+        }
     };
 
     const removeField = (fieldId: number) => {
         setFields(prev => prev.filter(f => f.id !== fieldId));
         if (activeFieldId === fieldId) setActiveFieldId(null);
+        webViewRef.current?.injectJavaScript(
+            `window.dispatchEvent(new MessageEvent('message', { data: JSON.stringify({ cmd: 'removeSelector', fieldId: ${fieldId} }) })); true;`
+        );
     };
 
     const openPreview = () => {
@@ -174,6 +301,27 @@ export default function AddSiteScreen() {
         const fullUrl = target.match(/^https?:\/\//i) ? target : `https://${target}`;
         setUrl(fullUrl);
         setWebViewUrl(fullUrl);
+        // Автоматически добавляем все fieldNames которых ещё нет
+        setFields(prev => {
+            const existing = new Set(prev.map(f => f.name));
+            const toAdd: TagField[] = fieldNames
+                .filter(fn => {
+                    const n = fn.Name ?? (fn as any).name;
+                    return n && !existing.has(n);
+                })
+                .map(fn => ({
+                    id: Date.now() + Math.random(),
+                    name: fn.Name ?? (fn as any).name,
+                    fieldNameId: fn.Id ?? (fn as any).id ?? 0,
+                    selector: '',
+                    previewText: '',
+                }));
+            const next = [...prev, ...toAdd];
+            // Устанавливаем активным первое незаполненное поле
+            const firstEmpty = next.find(f => !f.selector);
+            if (firstEmpty) setActiveFieldId(firstEmpty.id);
+            return next;
+        });
         setPreviewVisible(true);
     };
 
@@ -181,7 +329,7 @@ export default function AddSiteScreen() {
         if (!activeFieldId) return;
         try {
             const data = JSON.parse(event.nativeEvent.data);
-            updateSelector(activeFieldId, data.selector);
+            updateSelector(activeFieldId, data.selector, data.text ?? '');
         } catch {}
     };
 
@@ -214,6 +362,8 @@ export default function AddSiteScreen() {
             setWebViewUrl('');
             setFields([]);
             setActiveFieldId(null);
+            // сбрасываем подсветки в WebView
+            webViewRef.current?.injectJavaScript(`window.__fieldSelectors = {}; true;`);
             Alert.alert('Готово', 'Сайт добавлен');
         } catch (error: any) {
             Alert.alert('Ошибка', error?.message || 'Не удалось сохранить сайт');
@@ -271,14 +421,13 @@ export default function AddSiteScreen() {
                 <View style={s.card}>
                     <View style={s.sectionRow}>
                         <Text style={s.sectionLabel}>Параметры</Text>
-                        <TouchableOpacity style={s.addFieldButton} onPress={() => setFieldPickerVisible(true)}>
-                            <Feather name="plus" size={14} color="white" />
-                            <Text style={s.addFieldButtonText}>Добавить поле</Text>
-                        </TouchableOpacity>
+                        {fields.some(f => f.selector) && (
+                            <Text style={s.fieldsCountText}>{fields.filter(f => f.selector).length} / {fields.length}</Text>
+                        )}
                     </View>
 
                     {fields.length === 0 && (
-                        <Text style={s.emptyText}>Добавьте поля для парсинга</Text>
+                        <Text style={s.emptyText}>Откройте предпросмотр чтобы настроить поля</Text>
                     )}
 
                     {fields.map(field => (
@@ -290,9 +439,13 @@ export default function AddSiteScreen() {
                         >
                             <View style={s.fieldHeader}>
                                 <View style={s.fieldNameRow}>
-                                    <Feather name="tag" size={13} color={activeFieldId === field.id ? '#4a6fa5' : '#7f8c8d'} />
+                                    <Feather
+                                        name={field.selector ? 'check-circle' : 'tag'}
+                                        size={13}
+                                        color={field.selector ? '#27ae60' : activeFieldId === field.id ? '#4a6fa5' : '#7f8c8d'}
+                                    />
                                     <Text style={[s.fieldName, activeFieldId === field.id && s.fieldNameActive]}>{field.name}</Text>
-                                    {activeFieldId === field.id && (
+                                    {activeFieldId === field.id && !field.selector && (
                                         <View style={s.activeBadge}>
                                             <Text style={s.activeBadgeText}>активно</Text>
                                         </View>
@@ -302,27 +455,20 @@ export default function AddSiteScreen() {
                                     <Feather name="trash-2" size={15} color="#e74c3c" />
                                 </TouchableOpacity>
                             </View>
-                            <TextInput
-                                style={s.selectorInput}
-                                placeholder="Селектор (XPath, CSS, text='...')"
-                                placeholderTextColor="#95a5a6"
-                                value={field.selector}
-                                onChangeText={text => updateSelector(field.id, text)}
-                                onFocus={() => setActiveFieldId(field.id)}
-                                autoCapitalize="none"
-                                autoCorrect={false}
-                                multiline
-                            />
+                            {field.previewText ? (
+                                <Text style={s.fieldPreviewText} numberOfLines={2}>
+                                    {field.name}: <Text style={s.fieldPreviewValue}>{field.previewText}</Text>
+                                </Text>
+                            ) : (
+                                <Text style={s.fieldEmptyHint}>
+                                    {activeFieldId === field.id ? 'Откройте предпросмотр и тапните на элемент' : 'Не выбрано'}
+                                </Text>
+                            )}
                         </TouchableOpacity>
                     ))}
 
-                    {fields.length > 0 && !activeFieldId && (
-                        <Text style={s.hintText}>Нажмите на поле, затем тапните по элементу в предпросмотре</Text>
-                    )}
-                    {activeField && (
-                        <Text style={s.hintText}>
-                            Активно: <Text style={{ fontWeight: '700', color: '#4a6fa5' }}>{activeField.name}</Text> — тапните по элементу в предпросмотре
-                        </Text>
+                    {fields.length > 0 && !fields.some(f => f.selector) && (
+                        <Text style={s.hintText}>Откройте предпросмотр и тапните по элементам страницы</Text>
                     )}
                 </View>
 
@@ -392,52 +538,41 @@ export default function AddSiteScreen() {
                         </View>
                     )}
 
-                    {activeField?.selector ? (
-                        <View style={s.selectorPreview}>
-                            <Text style={s.selectorPreviewLabel}>Выбранный селектор:</Text>
-                            <Text style={s.selectorPreviewValue} numberOfLines={2}>{activeField.selector}</Text>
+                    {/* Панель полей внизу предпросмотра */}
+                    {fields.length > 0 && (
+                        <View style={s.fieldsPanel}>
+                            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={s.fieldsPanelContent}>
+                                {fields.map(field => (
+                                    <TouchableOpacity
+                                        key={field.id}
+                                        style={[s.fieldChip, activeFieldId === field.id && s.fieldChipActive, !!field.selector && s.fieldChipDone]}
+                                        onPress={() => setActiveFieldId(field.id)}
+                                        activeOpacity={0.75}
+                                    >
+                                        <Feather
+                                            name={field.selector ? 'check-circle' : 'circle'}
+                                            size={12}
+                                            color={field.selector ? '#27ae60' : activeFieldId === field.id ? 'white' : '#7f8c8d'}
+                                        />
+                                        <View style={{ marginLeft: 5 }}>
+                                            <Text style={[s.fieldChipName, activeFieldId === field.id && s.fieldChipNameActive]}>
+                                                {field.name}
+                                            </Text>
+                                            {field.previewText ? (
+                                                <Text style={s.fieldChipValue} numberOfLines={1}>{field.previewText}</Text>
+                                            ) : null}
+                                        </View>
+                                    </TouchableOpacity>
+                                ))}
+                            </ScrollView>
                             <TouchableOpacity style={s.doneButton} onPress={() => setPreviewVisible(false)}>
                                 <Text style={s.doneButtonText}>Готово</Text>
                             </TouchableOpacity>
                         </View>
-                    ) : null}
+                    )}
                 </View>
             </Modal>
 
-            {/* Модал выбора поля */}
-            <Modal visible={fieldPickerVisible} transparent animationType="slide" onRequestClose={() => setFieldPickerVisible(false)}>
-                <View style={s.modalBackdrop}>
-                    <View style={[s.modalCard, { paddingBottom: Math.max(insets.bottom, 20) }]}>
-                        <Text style={s.modalTitle}>Выберите параметр</Text>
-                        <FlatList
-                            data={fieldNames}
-                            keyExtractor={item => String(item.Id ?? (item as any).id)}
-                            renderItem={({ item }) => {
-                                const itemName = item.Name ?? (item as any).name;
-                                const added = fields.some(f => f.name === itemName);
-                                return (
-                                    <TouchableOpacity
-                                        style={[s.modalItem, added && s.modalItemDisabled]}
-                                        onPress={() => {
-                                            const id = item.Id ?? (item as any).id ?? 0;
-                                            addField(itemName, id);
-                                            setFieldPickerVisible(false);
-                                        }}
-                                        disabled={added}
-                                    >
-                                        <Text style={[s.modalItemText, added && s.modalItemTextDisabled]}>{itemName}</Text>
-                                        {added && <Feather name="check" size={16} color="#bdc3c7" />}
-                                    </TouchableOpacity>
-                                );
-                            }}
-                            ListEmptyComponent={<Text style={s.emptyText}>Параметры не загружены</Text>}
-                        />
-                        <TouchableOpacity style={s.modalClose} onPress={() => setFieldPickerVisible(false)}>
-                            <Text style={s.modalCloseText}>Закрыть</Text>
-                        </TouchableOpacity>
-                    </View>
-                </View>
-            </Modal>
         </SafeAreaView>
     );
 }
@@ -468,7 +603,6 @@ const lightStyles = StyleSheet.create({
     fieldNameActive: { color: '#4a6fa5' },
     activeBadge: { backgroundColor: '#4a6fa5', borderRadius: 6, paddingHorizontal: 6, paddingVertical: 2 },
     activeBadgeText: { color: 'white', fontSize: 10, fontWeight: '700' },
-    selectorInput: { backgroundColor: 'white', borderRadius: 10, padding: 10, borderWidth: 1, borderColor: '#dfe6ee', fontSize: 13, color: '#2c3e50', minHeight: 40 },
     primaryButton: { backgroundColor: '#4a6fa5', padding: 16, borderRadius: 14, alignItems: 'center' },
     primaryButtonText: { color: 'white', fontWeight: '700', fontSize: 16 },
     previewContainer: { flex: 1, backgroundColor: 'white' },
@@ -479,9 +613,6 @@ const lightStyles = StyleSheet.create({
     previewSubtitle: { textAlign: 'center', fontSize: 11, color: '#7f8c8d', marginTop: 2 },
     webView: { flex: 1 },
     webViewLoader: { ...StyleSheet.absoluteFillObject, justifyContent: 'center', alignItems: 'center', backgroundColor: 'rgba(255,255,255,0.8)' },
-    selectorPreview: { padding: 16, borderTopWidth: 1, borderTopColor: '#e8eef5', backgroundColor: 'white' },
-    selectorPreviewLabel: { fontSize: 12, color: '#7f8c8d', marginBottom: 4 },
-    selectorPreviewValue: { fontSize: 13, color: '#1f2d3d', fontWeight: '500', marginBottom: 12 },
     doneButton: { backgroundColor: '#4a6fa5', padding: 14, borderRadius: 12, alignItems: 'center' },
     doneButtonText: { color: 'white', fontWeight: '700' },
     modalBackdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.4)', justifyContent: 'flex-end' },
@@ -493,6 +624,18 @@ const lightStyles = StyleSheet.create({
     modalItemTextDisabled: { color: '#9aa5b4' },
     modalClose: { alignItems: 'center', paddingVertical: 16 },
     modalCloseText: { color: '#4a6fa5', fontWeight: '700', fontSize: 15 },
+    fieldsCountText: { fontSize: 13, color: '#7f8c8d', fontWeight: '600' },
+    fieldPreviewText: { fontSize: 13, color: '#7f8c8d', marginTop: 4 },
+    fieldPreviewValue: { color: '#1f2d3d', fontWeight: '600' },
+    fieldEmptyHint: { fontSize: 12, color: '#bdc3c7', marginTop: 4, fontStyle: 'italic' },
+    fieldsPanel: { borderTopWidth: 1, borderTopColor: '#e8eef5', backgroundColor: 'white', paddingVertical: 10 },
+    fieldsPanelContent: { paddingHorizontal: 12, gap: 8 },
+    fieldChip: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#f0f4f8', borderRadius: 20, paddingHorizontal: 12, paddingVertical: 8, borderWidth: 1.5, borderColor: '#e8eef5' },
+    fieldChipActive: { backgroundColor: '#4a6fa5', borderColor: '#4a6fa5' },
+    fieldChipDone: { borderColor: '#27ae60' },
+    fieldChipName: { fontSize: 12, fontWeight: '600', color: '#7f8c8d' },
+    fieldChipNameActive: { color: 'white' },
+    fieldChipValue: { fontSize: 11, color: '#27ae60', maxWidth: 100 },
 });
 
 const darkStyles = StyleSheet.create({
@@ -521,7 +664,6 @@ const darkStyles = StyleSheet.create({
     fieldNameActive: { color: '#60a5fa' },
     activeBadge: { backgroundColor: '#4a6fa5', borderRadius: 6, paddingHorizontal: 6, paddingVertical: 2 },
     activeBadgeText: { color: 'white', fontSize: 10, fontWeight: '700' },
-    selectorInput: { backgroundColor: '#1a1a1a', borderRadius: 10, padding: 10, borderWidth: 1, borderColor: '#3d3d3d', fontSize: 13, color: '#e2e8f0', minHeight: 40 },
     primaryButton: { backgroundColor: '#4a6fa5', padding: 16, borderRadius: 14, alignItems: 'center' },
     primaryButtonText: { color: 'white', fontWeight: '700', fontSize: 16 },
     previewContainer: { flex: 1, backgroundColor: '#0f0f0f' },
@@ -532,9 +674,6 @@ const darkStyles = StyleSheet.create({
     previewSubtitle: { textAlign: 'center', fontSize: 11, color: '#9ca3af', marginTop: 2 },
     webView: { flex: 1 },
     webViewLoader: { ...StyleSheet.absoluteFillObject, justifyContent: 'center', alignItems: 'center', backgroundColor: 'rgba(0,0,0,0.6)' },
-    selectorPreview: { padding: 16, borderTopWidth: 1, borderTopColor: '#2d2d2d', backgroundColor: '#1a1a1a' },
-    selectorPreviewLabel: { fontSize: 12, color: '#9ca3af', marginBottom: 4 },
-    selectorPreviewValue: { fontSize: 13, color: '#e2e8f0', fontWeight: '500', marginBottom: 12 },
     doneButton: { backgroundColor: '#4a6fa5', padding: 14, borderRadius: 12, alignItems: 'center' },
     doneButtonText: { color: 'white', fontWeight: '700' },
     modalBackdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', justifyContent: 'flex-end' },
@@ -546,4 +685,16 @@ const darkStyles = StyleSheet.create({
     modalItemTextDisabled: { color: '#6b7280' },
     modalClose: { alignItems: 'center', paddingVertical: 16 },
     modalCloseText: { color: '#60a5fa', fontWeight: '700', fontSize: 15 },
+    fieldsCountText: { fontSize: 13, color: '#9ca3af', fontWeight: '600' },
+    fieldPreviewText: { fontSize: 13, color: '#9ca3af', marginTop: 4 },
+    fieldPreviewValue: { color: '#e2e8f0', fontWeight: '600' },
+    fieldEmptyHint: { fontSize: 12, color: '#4b5563', marginTop: 4, fontStyle: 'italic' },
+    fieldsPanel: { borderTopWidth: 1, borderTopColor: '#2d2d2d', backgroundColor: '#1a1a1a', paddingVertical: 10 },
+    fieldsPanelContent: { paddingHorizontal: 12, gap: 8 },
+    fieldChip: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#2d2d2d', borderRadius: 20, paddingHorizontal: 12, paddingVertical: 8, borderWidth: 1.5, borderColor: '#3d3d3d' },
+    fieldChipActive: { backgroundColor: '#4a6fa5', borderColor: '#4a6fa5' },
+    fieldChipDone: { borderColor: '#27ae60' },
+    fieldChipName: { fontSize: 12, fontWeight: '600', color: '#9ca3af' },
+    fieldChipNameActive: { color: 'white' },
+    fieldChipValue: { fontSize: 11, color: '#4ade80', maxWidth: 100 },
 });

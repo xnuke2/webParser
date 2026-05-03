@@ -67,13 +67,13 @@ export default function Index() {
 
         if (filterConditions.length > 0) {
             filtered = filtered.filter(site => {
-                const siteFieldData = fields[site.Id];
-                if (!siteFieldData) return false;
                 return filterConditions.every(condition => {
                     if (!condition.fieldNameId) return true;
                     const fieldName = fieldNames.find(f => f.Id === condition.fieldNameId);
                     if (!fieldName) return true;
-                    const field = siteFieldData.find(f => f.Field.toLowerCase() === fieldName.Name.toLowerCase());
+                    const field = allParsedData.find(
+                        p => p.SiteId === site.Id && p.Field.toLowerCase() === fieldName.Name.toLowerCase()
+                    );
                     if (!field) return false;
 
                     const isNumeric = NUMERIC_FIELD_NAMES.includes(fieldName.Name);
@@ -105,7 +105,7 @@ export default function Index() {
         }
 
         return filtered;
-    }, [sites, searchQuery, sortBy, filterConditions, fields, fieldNames]);
+    }, [sites, searchQuery, sortBy, filterConditions, allParsedData, fieldNames]);
 
     const activeFiltersCount = filterConditions.filter(c => c.fieldNameId !== null).length;
 
