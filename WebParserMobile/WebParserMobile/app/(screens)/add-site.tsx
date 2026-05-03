@@ -32,7 +32,7 @@ type TagField = {
     deleted?: boolean;
 };
 
-// JS инжектируется в WebView — подсвечивает элементы при наведении, отправляет селектор при клике,
+// JS вставляется в WebView — подсвечивает элементы при наведении, отправляет селектор при клике,
 // подсвечивает зелёным уже выбранные элементы
 const INJECTED_JS = `
 (function() {
@@ -109,7 +109,7 @@ const INJECTED_JS = `
         return (el.innerText || el.textContent || '').trim().substring(0, 80);
     }
 
-    // Перерисовываем все зелёные рамки по сохранённым селекторам
+    
     function redrawHighlights() {
         // Сначала снимаем все data-field-highlight рамки
         var marked = document.querySelectorAll('[data-field-highlight]');
@@ -117,7 +117,7 @@ const INJECTED_JS = `
             marked[i].style.outline = '';
             marked[i].removeAttribute('data-field-highlight');
         }
-        // Рисуем заново
+        
         for (var fid in window.__fieldSelectors) {
             var entry = window.__fieldSelectors[fid];
             try {
@@ -130,7 +130,7 @@ const INJECTED_JS = `
         }
     }
 
-    // Команды от React Native: { cmd: 'setSelector', fieldId, selector } | { cmd: 'removeSelector', fieldId }
+    
     document.addEventListener('message', function(e) {
         try {
             var msg = JSON.parse(e.data);
@@ -179,8 +179,8 @@ const INJECTED_JS = `
         hovered.style.cursor = 'pointer';
     }, true);
 
-    // Пытаемся найти табличный паттерн: <tr><td>Метка</td><td>Значение</td></tr>
-    // или dl/dt/dd паттерн. Если тапнули на значение — возвращаем text='Метка'
+    // Пытаемся найти : <tr><td>Метка</td><td>Значение</td></tr>
+    // или dl/dt/dd . Если тапнули на значение — возвращаем text='Метка'
     function tryTablePattern(el) {
         // Ищем ближайший td
         var td = el;
@@ -212,12 +212,11 @@ const INJECTED_JS = `
             }
         }
 
-        // dl/dt/dd паттерн
+        // dl/dt/dd 
         var dtEl = el;
         while (dtEl && dtEl !== document.body && dtEl.tagName !== 'DT' && dtEl.tagName !== 'DD') dtEl = dtEl.parentElement;
         if (dtEl) {
             if (dtEl.tagName === 'DD') {
-                // ищем предыдущий dt
                 var prev = dtEl.previousElementSibling;
                 while (prev && prev.tagName !== 'DT') prev = prev.previousElementSibling;
                 if (prev) {
@@ -458,7 +457,6 @@ export default function AddSiteScreen() {
                 setFields(updatedFields);
 
                 await fetchSites();
-                // Инвалидируем кэш и запускаем парсинг с новыми полями
                 try {
                     await apiService.refreshSiteParsedData(siteId);
                     await AsyncStorage.removeItem('parsedData_cache');

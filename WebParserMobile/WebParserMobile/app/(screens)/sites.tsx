@@ -103,7 +103,7 @@ export default function Sites() {
         }
     }, [token]);
 
-    // Фильтрация сайтов (поиск + только избранные + условия фильтрации)
+    // Фильтрация сайтов
     const filteredAndSortedSites = useMemo(() => {
         let filtered = [...sites];
 
@@ -355,7 +355,6 @@ export default function Sites() {
         }
     };
 
-    // НОВЫЙ: переключение режима "только избранные"
     const toggleShowOnlyFavorites = () => {
         setShowOnlyFavorites(prev => !prev);
     };
