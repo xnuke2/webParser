@@ -19,8 +19,7 @@ public class ParserController(ILogger<ParserController> logger, AppDbContext con
             var site = context.AnalyzedSites.Find(id);
             if (site == null)
                 return BadRequest("Site not found");
-
-            // Возвращаем из кэша если есть
+            
             var cached = context.ParsedData
                 .Where(p => p.SiteId == id)
                 .Select(p => new { p.Field, p.Data })
@@ -32,7 +31,7 @@ public class ParserController(ILogger<ParserController> logger, AppDbContext con
                 return Ok(cached);
             }
 
-            // Если кэша нет — парсим живьём
+
             logger.LogInformation("No cache for site {Id}, parsing live", id);
 
             var fields = context.AnalyzedFields
@@ -46,7 +45,7 @@ public class ParserController(ILogger<ParserController> logger, AppDbContext con
             var page = await htmlService.GetHtmlWithPlaywrightAsync(site.Url);
             var result = stringParser.ParseString(page, fields);
 
-            // Сохраняем в кэш
+
             var now = DateTime.UtcNow;
             context.ParsedData.AddRange(result.Select(r => new Models.Database.ParsedData
             {
@@ -126,7 +125,7 @@ public class ParserController(ILogger<ParserController> logger, AppDbContext con
                 return BadRequest($"HTML too short: {html.Length} chars");
             }
         
-            // Сохраняем HTML для отладки
+
             var debugPath = Path.Combine(Directory.GetCurrentDirectory(), "debug.html");
             await System.IO.File.WriteAllTextAsync(debugPath, html);
             logger.LogInformation("HTML saved to: {Path}", debugPath);

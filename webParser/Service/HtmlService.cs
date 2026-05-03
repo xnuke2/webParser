@@ -13,8 +13,10 @@ public sealed class HtmlService : IAsyncDisposable
     private readonly HtmlServiceOptions _options;
     private readonly string _contentRoot;
 
+
     private static IPlaywright? _playwright;
     private static IBrowser? _browser;
+
     private static readonly SemaphoreSlim _semaphore = new(1, 1);
     private bool _disposed;
 
@@ -28,6 +30,7 @@ public sealed class HtmlService : IAsyncDisposable
         _logger = logger;
         _options = options.Value;
         _contentRoot = environment.ContentRootPath;
+
 
         _ = InitializeBrowserAsync();
     }
@@ -94,7 +97,7 @@ public sealed class HtmlService : IAsyncDisposable
         }
         if (encoding == null)
         {
-            // Latin-1 preserves all byte values unlike ASCII, so charset detection works even after non-ASCII content
+
             var latin1 = Encoding.GetEncoding("iso-8859-1").GetString(byteArray, 0, Math.Min(byteArray.Length, 4096));
             var metaCharset = System.Text.RegularExpressions.Regex.Match(latin1, @"<meta[^>]+charset=[""']?\s*([\w-]+)", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
             if (metaCharset.Success)
@@ -102,7 +105,7 @@ public sealed class HtmlService : IAsyncDisposable
                 try { encoding = Encoding.GetEncoding(metaCharset.Groups[1].Value); } catch { }
             }
         }
-        // Last resort: try to detect UTF-8 BOM or valid UTF-8 sequence, otherwise fall back to Windows-1251 for Cyrillic sites
+       
         if (encoding == null)
         {
             if (byteArray.Length >= 3 && byteArray[0] == 0xEF && byteArray[1] == 0xBB && byteArray[2] == 0xBF)
@@ -142,19 +145,18 @@ public sealed class HtmlService : IAsyncDisposable
     {
         if (_browser is { IsConnected: true })
             return;
-
+        
         await _semaphore.WaitAsync();
         try
         {
             if (_browser is { IsConnected: true })
                 return;
 
-            // Закрываем старые экземпляры, если они есть
+
             await CloseBrowserAsync();
 
             _logger.LogInformation("Initializing Playwright browser...");
             
-            // Playwright сам найдёт браузеры по PLAYWRIGHT_BROWSERS_PATH
             _playwright = await Playwright.CreateAsync();
             _browser = await _playwright.Chromium.LaunchAsync(new BrowserTypeLaunchOptions
             {
@@ -165,7 +167,7 @@ public sealed class HtmlService : IAsyncDisposable
                     "--disable-setuid-sandbox",
                     "--disable-dev-shm-usage",
                     "--disable-gpu",
-                    "--disable-blink-features=AutomationControlled", // скрывает navigator.webdriver
+                    "--disable-blink-features=AutomationControlled", 
                     "--disable-features=ChromeWhatsNewUI",
                     "--disable-component-extensions-with-background-pages",
                     "--disable-default-apps",
@@ -246,8 +248,7 @@ public sealed class HtmlService : IAsyncDisposable
         try
         {
             await EnsureBrowserInitializedAsync();
-
-            // Создаём контекст и страницу для каждого запроса (изолированно)
+            
             await using var context = await _browser!.NewContextAsync(new BrowserNewContextOptions
             {
                 UserAgent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
@@ -257,6 +258,7 @@ public sealed class HtmlService : IAsyncDisposable
                 BypassCSP = true,
                 Locale = "ru-RU",
                 TimezoneId = "Europe/Moscow",
+
                 ExtraHTTPHeaders = new Dictionary<string, string>
                 {
                     ["Accept"] = "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8",
@@ -278,7 +280,6 @@ public sealed class HtmlService : IAsyncDisposable
             var page = await context.NewPageAsync();
             try
             {
-                // Навигация с ожиданием DOMContentLoaded
                 var response = await page.GotoAsync(url, new PageGotoOptions
                 {
                     WaitUntil = WaitUntilState.DOMContentLoaded,
@@ -291,13 +292,13 @@ public sealed class HtmlService : IAsyncDisposable
                     throw new HttpRequestException($"Rate limited (429): {url}", null, System.Net.HttpStatusCode.TooManyRequests);
                 }
 
-                // Ожидание, пока сеть не станет бездействующей (для AJAX/SPA)
+
                 await page.WaitForLoadStateAsync(LoadState.NetworkIdle, new PageWaitForLoadStateOptions
                 {
                     Timeout = _options.NetworkIdleTimeoutMs
                 });
 
-                // Умное ожидание: пробуем дождаться пропадания спиннера или появления контента
+
                 await WaitForContentAsync(page);
 
                 var html = await page.ContentAsync();
@@ -307,7 +308,6 @@ public sealed class HtmlService : IAsyncDisposable
             finally
             {
                 await page.CloseAsync();
-                // context автоматически закроется при await using
             }
         }
         catch (HttpRequestException ex) when (ex.StatusCode == System.Net.HttpStatusCode.TooManyRequests)
@@ -324,7 +324,7 @@ public sealed class HtmlService : IAsyncDisposable
 
     private async Task WaitForContentAsync(IPage page)
     {
-        // Ждём, пока исчезнут типичные индикаторы загрузки
+
         var loadingSelectors = new[] { "#spinner", ".loading", ".loader", ".spinner", "[data-loading]" };
         foreach (var selector in loadingSelectors)
         {
@@ -337,10 +337,10 @@ public sealed class HtmlService : IAsyncDisposable
                     await page.WaitForSelectorAsync(selector, new PageWaitForSelectorOptions { State = WaitForSelectorState.Hidden, Timeout = 5000 });
                 }
             }
-            catch (TimeoutException) { /* игнорируем, если не дождались */ }
+            catch (TimeoutException) { }
         }
 
-        // Даём дополнительное время для рендеринга динамического контента
+
         if (_options.AdditionalWaitMs > 0)
             await Task.Delay(_options.AdditionalWaitMs);
     }
@@ -352,6 +352,7 @@ public sealed class HtmlService : IAsyncDisposable
 
         await ApplyRateLimitDelay();
 
+        // Сначала пробуем прямой запрос, затем по очереди каждый прокси из списка
         try
         {
             return await FetchHtmlWithHttpClientAsync(url, null);
@@ -384,6 +385,7 @@ public sealed class HtmlService : IAsyncDisposable
         url = CleanUrl(url);
         _logger.LogInformation("Adaptive fetch: {Url}", url);
 
+
         bool shouldUsePlaywright = _options.ForcePlaywrightForJsSites &&
             _options.JsHeavySites.Any(site => url.Contains(site, StringComparison.OrdinalIgnoreCase));
 
@@ -400,8 +402,7 @@ public sealed class HtmlService : IAsyncDisposable
                 return await GetHtmlAsync(url);
             }
         }
-
-        // Сначала пробуем простой HTTP
+        
         try
         {
             var simpleHtml = await GetHtmlAsync(url);
@@ -425,17 +426,17 @@ public sealed class HtmlService : IAsyncDisposable
         if (string.IsNullOrWhiteSpace(url))
             return string.Empty;
 
-        // Убираем управляющие символы
+
         var cleaned = new string(url.Where(c => !char.IsControl(c)).ToArray());
         cleaned = cleaned.Trim();
-
-        // Кодируем пробелы и другие небезопасные символы
+        
         if (cleaned.Contains(' '))
             cleaned = Uri.EscapeUriString(cleaned);
 
         return cleaned;
     }
 
+    // определения "пустой" страницы
     private bool IsEmptyPage(string html)
     {
         if (string.IsNullOrEmpty(html) || html.Length < 500)
@@ -454,7 +455,7 @@ public sealed class HtmlService : IAsyncDisposable
                 return true;
         }
 
-        // Проверяем, что после <body> есть достаточно текста
+
         var bodyStart = html.IndexOf("<body", StringComparison.OrdinalIgnoreCase);
         if (bodyStart >= 0)
         {

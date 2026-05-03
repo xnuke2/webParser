@@ -55,7 +55,10 @@ public class StringParser
             {
                 _logger.LogDebug("Looking for field '{Field}' with selector: {Selector}", field.Field, selector);
 
-                // 1. Если selector похож на XPath
+                // Цепочка стратегий поиска: каждая следующая пробуется только если предыдущая ничего не нашла.
+                // Порядок важен — от самых точных к более простым
+
+                // Явный XPath — самый надёжный, если пользователь знает структуру страницы
                 if (selector.StartsWith("//") || selector.StartsWith(".//"))
                 {
                     var node = doc.DocumentNode.SelectSingleNode(selector);
@@ -63,35 +66,35 @@ public class StringParser
                         extracted = ExtractTextWithStructure(node);
                 }
 
-                // 2. Поиск по data-ftid
+                // Поиск по data-ftid 
                 if (extracted == null)
                     extracted = FindByDataFtid(doc, selector);
 
-                // 3. Поиск как CSS-селектор
+                //  CSS-селектор: .class, #id, tag.class, tag[attr='val']
                 if (extracted == null)
                     extracted = FindByCssSelector(doc, selector);
 
-                // 4. Поиск по тексту соседнего элемента (например, "Пробег" -> следующая ячейка)
+                //  text='Пробег' — ищем элемент с таким текстом и берём соседнюю ячейку
                 if (extracted == null)
                     extracted = FindByAdjacentText(doc, selector);
 
-                // 5. Поиск по youla slug — ищем в исходном HTML, т.к. HtmlAgilityPack энкодит скрипты
+                //ищем в сыром HTML, потому что HtmlAgilityPack экранирует содержимое <script>
                 if (extracted == null)
                     extracted = FindByYoulaSlug(html, selector);
 
-                // 6. Поиск по label/value div-парам (autospot, avito и подобные)
+                //  пара label/value div 
                 if (extracted == null)
                     extracted = FindByLabelValueDiv(doc, selector);
 
-                // 7. Поиск по dt/dd парам (drom и подобные)
+                //  пара <dt>/<dd> 
                 if (extracted == null)
                     extracted = FindByDtDd(doc, selector);
 
-                // 8. Поиск по itemprop атрибуту (schema.org микроразметка)
+                // schema.org микроразметка
                 if (extracted == null)
                     extracted = FindByItemprop(doc, selector);
 
-                // 8. Конвертация HTML-фрагмента в XPath
+                // если передан HTML-фрагмент вида <div class="price">, конвертируем в XPath
                 if (extracted == null)
                 {
                     var xpath = ConvertHtmlToXPath(selector);
@@ -208,15 +211,16 @@ public class StringParser
     {
         try
         {
-            // разбиваем по > (прямой потомок) и пробелу (любой потомок)
-            // нормализуем: заменяем " > " и ">" на разделитель
+            // Разбиваем CSS-селектор на токены, сохраняя разделители (> и пробел),
+            // чтобы знать тип связи между частями
             var parts = Regex.Split(css.Trim(), @"\s*>\s*|\s+");
             if (parts.Length == 0) return null;
 
             var xpathParts = new List<string>();
             bool directChild = css.Contains('>');
 
-            // перестраиваем с учётом реального разделителя
+            // Regex.Split оставляет разделители в массиве результатов —
+            // это позволяет понять, был ли между частями > или пробел 
             var tokens = Regex.Split(css.Trim(), @"(\s*>\s*|\s+)");
             var segments = new List<(string part, bool direct)>();
             bool nextDirect = false;
@@ -252,7 +256,7 @@ public class StringParser
         }
     }
 
-    // Конвертирует одну часть CSS-селектора в XPath-шаг: div.foo.bar:nth-of-type(2) → div[contains(@class,'foo') and contains(@class,'bar')][2]
+    // Конвертирует одну часть CSS-селектора в XPath-шаг.
     private string CssSelectorPartToXPath(string part)
     {
         // nth-of-type(n)
@@ -289,7 +293,7 @@ public class StringParser
         return $"{tag}[{string.Join(" and ", conditions)}]";
     }
 
-    // Extracts only direct text nodes from a cell, ignoring nested block elements (ads, tax hints, etc.)
+
     private string ExtractCellText(HtmlNode cell)
     {
         var sb = new System.Text.StringBuilder();
@@ -307,7 +311,7 @@ public class StringParser
                 if (!string.IsNullOrEmpty(t))
                     sb.Append(t).Append(" ");
             }
-            // skip block elements (div, span with ads, etc.)
+
         }
         var result = sb.ToString().Trim();
         return string.IsNullOrEmpty(result) ? ExtractTextWithStructure(cell) : result;
@@ -324,7 +328,7 @@ public class StringParser
             {
                 foreach (var node in nodes)
                 {
-                    // tr/td pattern
+                    // tr/td 
                     var row = node.Ancestors("tr").FirstOrDefault();
                     if (row != null)
                     {
@@ -334,7 +338,7 @@ public class StringParser
                             return ExtractCellText(valueCell);
                     }
 
-                    // dt/dd pattern
+                    // dt/dd 
                     if (node.Name == "dt" || node.Ancestors("dt").Any())
                     {
                         var dt = node.Name == "dt" ? node : node.Ancestors("dt").First();
@@ -345,7 +349,7 @@ public class StringParser
                             return ExtractTextWithStructure(dd);
                     }
 
-                    // div label/value pattern (autospot, avito)
+                    // div label/value 
                     var labelDiv = node.Ancestors().FirstOrDefault(a =>
                         a.GetAttributeValue("class", "").Contains("title") ||
                         a.GetAttributeValue("class", "").Contains("label") ||
@@ -369,8 +373,7 @@ public class StringParser
         }
         return null;
     }
-
-    // schema.org: selector = "itemprop:price"
+    
     private string FindByItemprop(HtmlDocument doc, string selector)
     {
         var match = Regex.Match(selector, @"^itemprop:(.+)$");
@@ -379,8 +382,7 @@ public class StringParser
         var prop = match.Groups[1].Value.Trim();
         var node = doc.DocumentNode.SelectSingleNode($"//*[@itemprop='{prop}']");
         if (node == null) return null;
-
-        // Prefer content attribute (meta tags), then innerText
+        
         var content = node.GetAttributeValue("content", null);
         if (!string.IsNullOrWhiteSpace(content))
             return content.Trim();
@@ -388,15 +390,15 @@ public class StringParser
         return ExtractTextWithStructure(node);
     }
 
-    // youla.ru: selector = "youla:auto_mileage" or "youla:price"
+    // Парсинг данных с youla.ru через JSON внутри HTML.
+    // Youla встраивает данные объявления в <script> как JSON, а не в DOM 
     private string FindByYoulaSlug(string rawHtml, string selector)
     {
         var match = Regex.Match(selector, @"^youla:([\w]+)$");
         if (!match.Success) return null;
 
         var slug = match.Groups[1].Value;
-
-        // Special case: price is stored in kopecks as "price":230000000
+        
         if (slug == "price")
         {
             var pm = Regex.Match(rawHtml, @"""price""\s*:\s*(\d+)");
@@ -405,18 +407,17 @@ public class StringParser
             return null;
         }
 
-        // auto_* slugs: "slug":"auto_xxx",...,"rawValue":"..."
+        // Остальные поля хранятся в виде: "slug":"auto_xxx", ..., "rawValue":"значение"
         var pattern = $@"""slug""\s*:\s*""{Regex.Escape(slug)}""[\s\S]{{0,400}}?""rawValue""\s*:\s*""((?:[^""\\]|\\.)*)""";
         var m = Regex.Match(rawHtml, pattern);
         if (!m.Success) return null;
-
+        
         var rawVal = m.Groups[1].Value;
         rawVal = Regex.Replace(rawVal, @"\\u([0-9a-fA-F]{4})", mx =>
             ((char)Convert.ToInt32(mx.Groups[1].Value, 16)).ToString());
         return rawVal;
     }
-
-    // autospot.ru and similar: selector = "label:Двигатель"
+    
     private string FindByLabelValueDiv(HtmlDocument doc, string selector)
     {
         var match = Regex.Match(selector, @"^label:(.+)$");
@@ -424,7 +425,7 @@ public class StringParser
 
         var labelText = match.Groups[1].Value.Trim();
 
-        // Pattern: <div class="*title*">Label</div><div class="*value*">Value</div>
+        //  <div class="*title*">Label</div><div class="*value*">Value</div>
         var titleNodes = doc.DocumentNode.SelectNodes(
             $"//*[contains(@class,'title') or contains(@class,'label') or contains(@class,'name')]");
         if (titleNodes != null)
@@ -436,8 +437,7 @@ public class StringParser
 
                 var parent = titleNode.ParentNode;
                 if (parent == null) continue;
-
-                // Look for sibling with value class
+                
                 var valueNode = parent.ChildNodes
                     .Where(c => c.NodeType == HtmlNodeType.Element && c != titleNode)
                     .FirstOrDefault(c =>
@@ -446,7 +446,7 @@ public class StringParser
                 if (valueNode != null)
                     return ExtractTextWithStructure(valueNode);
 
-                // Or just the next sibling element
+
                 var next = titleNode.NextSibling;
                 while (next != null && next.NodeType != HtmlNodeType.Element)
                     next = next.NextSibling;
@@ -457,7 +457,7 @@ public class StringParser
         return null;
     }
 
-    // drom.ru and similar: selector = "dt:Пробег"
+    //  selector = "dt:Пробег"
     private string FindByDtDd(HtmlDocument doc, string selector)
     {
         var match = Regex.Match(selector, @"^dt:(.+)$");
@@ -589,11 +589,12 @@ public class StringParser
     //     return sb.ToString().Trim();
     // }
 
+    // Извлекает текст из HTML-узла, сохраняя читаемую структуру
     private string ExtractTextWithStructure(HtmlNode node)
     {
         var sb = new System.Text.StringBuilder();
         bool needSpaceBeforeNextOutput = false;
-        
+
         void TraverseSimple(HtmlNode n)
         {
             if (n.NodeType == HtmlNodeType.Text)
@@ -619,19 +620,16 @@ public class StringParser
                         sb.AppendLine();
                 }
 
-                // Обработка дочерних узлов с учетом пробелов между ними
                 var childNodes = n.ChildNodes;
                 for (int i = 0; i < childNodes.Count; i++)
                 {
                     var child = childNodes[i];
 
-                    // Пробел ставится *перед* inline-элементом или текстом
                     var currentIsText = child.NodeType == HtmlNodeType.Text && !string.IsNullOrWhiteSpace(child.InnerText);
                     var currentIsInline = child.NodeType == HtmlNodeType.Element && InlineElements.Contains(child.Name.ToLowerInvariant());
-
+                    
                     if (i > 0 && (currentIsText || currentIsInline))
                     {
-                        // Был ли предыдущий узел текстом или inline
                         var prevSibling = childNodes[i - 1];
                         var prevWasTextOrInline = (prevSibling.NodeType == HtmlNodeType.Text && !string.IsNullOrWhiteSpace(prevSibling.InnerText))
                                                || (prevSibling.NodeType == HtmlNodeType.Element && InlineElements.Contains(prevSibling.Name.ToLowerInvariant()));
@@ -647,19 +645,16 @@ public class StringParser
 
                     TraverseSimple(child);
 
-                    // После обработки inline-элемента, следующий текст/inline должен начинаться с пробела
                     if (currentIsInline)
                     {
                         needSpaceBeforeNextOutput = true;
                     }
                     else if (currentIsText && !string.IsNullOrEmpty(child.InnerText.Trim()))
                     {
-                        // После текстового узла, если он не пустой, следующий inline должен начинаться с пробела
                         needSpaceBeforeNextOutput = true;
                     }
                     else
                     {
-                        // Для блочных и других элементов, флаг сбрасывается
                         needSpaceBeforeNextOutput = false;
                     }
                 }
@@ -671,17 +666,14 @@ public class StringParser
             }
         }
 
-
         TraverseSimple(node);
 
         return FixExtraSpaces(sb.ToString()).Trim();
     }
-    
+
     private string FixExtraSpaces(string text)
     {
-        // Удаляем пробел перед запятой, точкой, восклицательным и вопросительным знаком
         text = Regex.Replace(text, @"\s+([,.!?])", "$1");
-        // Удаляем двойные пробелы
         text = Regex.Replace(text, @"\s+", " ");
         return text.Trim();
     }

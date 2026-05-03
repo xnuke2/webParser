@@ -9,9 +9,7 @@ using webParser.Models.DTO.AnalyzedSite;
 namespace webParser.Controllers;
 [Route("api/[controller]")]
 [ApiController]
-//временно
-[AllowAnonymous]
-//[Authorize(Roles = "Редактор,Администратор")]
+[Authorize(Roles = "Редактор,Администратор")]
 public class AnalyzedSiteController(ILogger<HomeController> logger, AppDbContext context) : Controller
 {
     [HttpGet("all")]

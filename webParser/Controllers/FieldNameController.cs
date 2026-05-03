@@ -9,7 +9,7 @@ namespace webParser.Controllers;
 [Route("api/[controller]")]
 [ApiController]
 [AllowAnonymous]
-//[Authorize(Roles = "Редактор,Администратор")]
+
 public class FieldNameController(ILogger<FieldNameController> logger, AppDbContext context) : Controller
 {
     [HttpGet("all")]
@@ -30,6 +30,7 @@ public class FieldNameController(ILogger<FieldNameController> logger, AppDbConte
     }
 
     [HttpPost]
+    [Authorize(Roles = "Редактор,Администратор")]
     public IActionResult Post([FromBody] CreateFieldNameDto dto)
     {
         if (dto.Name == "")
@@ -42,6 +43,7 @@ public class FieldNameController(ILogger<FieldNameController> logger, AppDbConte
     }
 
     [HttpPatch("{id}")]
+    [Authorize(Roles = "Редактор,Администратор")]
     public IActionResult Patch([FromRoute] int id, [FromBody] UpdateFieldNameDto dto)
     {
         if (id == 0)
@@ -57,6 +59,7 @@ public class FieldNameController(ILogger<FieldNameController> logger, AppDbConte
     }
 
     [HttpDelete("{id}")]
+    [Authorize(Roles = "Редактор,Администратор")]
     public IActionResult Delete([FromRoute] int id)
     {
         if (id == 0)

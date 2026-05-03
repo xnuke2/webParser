@@ -33,7 +33,7 @@ public static class DatabaseService
                 Console.WriteLine($"Database connection attempt {i + 1} failed: {ex.Message}");
             }
             
-            await Task.Delay(2000); // Ждем 2 секунды перед следующей попыткой
+            await Task.Delay(2000); 
         }
         
         throw new Exception("Could not connect to database after multiple attempts");

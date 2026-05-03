@@ -7,14 +7,14 @@ namespace webParser.Service;
 
 public class ParserBackgroundService(IServiceScopeFactory scopeFactory, ILogger<ParserBackgroundService> logger) : BackgroundService
 {
-    // Интервал обновления кэша — 6 часов
+    // Интервал обновления кэша — 6 часов. 
     private readonly TimeSpan _interval = TimeSpan.FromHours(6);
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
         logger.LogInformation("Parser background service started");
 
-        // Первый запуск сразу при старте
+        // Первый запуск
         await ParseAllSitesAsync(stoppingToken);
 
         while (!stoppingToken.IsCancellationRequested)
@@ -28,6 +28,9 @@ public class ParserBackgroundService(IServiceScopeFactory scopeFactory, ILogger<
     {
         logger.LogInformation("Starting scheduled parsing of all sites");
 
+        // BackgroundService работает как singleton, но DbContext — scoped.
+        // Поэтому создаём отдельный scope для каждого цикла парсинга,
+        // чтобы избежать утечек памяти и проблем с жизненным циклом DbContext.
         await using var scope = scopeFactory.CreateAsyncScope();
         var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
         var htmlService = scope.ServiceProvider.GetRequiredService<HtmlService>();
@@ -51,7 +54,7 @@ public class ParserBackgroundService(IServiceScopeFactory scopeFactory, ILogger<
                 var html = await htmlService.GetHtmlWithPlaywrightAsync(site.Url);
                 var results = stringParser.ParseString(html, fields);
 
-                // Удаляем старый кэш для этого сайта
+                // Удаляем старый кэш перед записью нового
                 var existing = db.ParsedData.Where(p => p.SiteId == site.Id);
                 db.ParsedData.RemoveRange(existing);
 
@@ -68,7 +71,7 @@ public class ParserBackgroundService(IServiceScopeFactory scopeFactory, ILogger<
                 await db.SaveChangesAsync(stoppingToken);
                 logger.LogInformation("Parsed site {Id} ({Url})", site.Id, site.Url);
 
-                // Небольшая пауза между сайтами чтобы не нагружать
+                // Пауза 5с между сайтами — чтобы не спровоцировать блокировку
                 await Task.Delay(TimeSpan.FromSeconds(5), stoppingToken);
             }
             catch (Exception ex)

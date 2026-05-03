@@ -46,15 +46,15 @@ FROM base AS final
 WORKDIR /app
 COPY --from=publish /app/publish .
 
-# Путь, куда будут установлены браузеры Playwright (должен быть доступен на запись)
+
 ENV PLAYWRIGHT_BROWSERS_PATH=/app/.playwright
 ENV DOTNET_PLAYWRIGHT_PATH=/app/.playwright
 
-# Установка .NET инструмента Playwright CLI
+
 RUN dotnet tool install --global Microsoft.Playwright.CLI
 ENV PATH="${PATH}:/root/.dotnet/tools"
 
-# Установка браузера Chromium (без дополнительных зависимостей, они уже есть в образе)
+
 RUN playwright install chromium
 
 ENTRYPOINT ["dotnet", "webParser.dll"]

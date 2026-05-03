@@ -19,28 +19,21 @@ public class RoleController: Controller
         _logger = logger;
         _context = context;
     }
-    /// <summary>
-    /// get all roles
-    /// </summary>
-    ///
     [HttpGet("all")]
+    [AllowAnonymous]
     public IActionResult GetRoles()
     {
         var roles = _context.Roles.ToList();
         return Ok(roles);
     }
-    /// <summary>
-    /// get role by id
-    /// </summary>
+
     [HttpGet("{id}")]
+    [AllowAnonymous]
     public IActionResult GetRole([FromRoute]int id)
     {
         var role = _context.Roles.Find(id);
         return role!=null? Ok(role):NotFound();
     }
-    /// <summary>
-    /// add role
-    /// </summary>
     [HttpPost]
     public IActionResult AddRole(string inputName)
     {
@@ -59,9 +52,6 @@ public class RoleController: Controller
     
         return Ok("Role created successfully");
     }
-    /// <summary>
-    /// delete role
-    /// </summary>
 
     [HttpDelete]
     

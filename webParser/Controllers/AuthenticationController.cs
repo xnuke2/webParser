@@ -26,6 +26,7 @@ public class AuthenticationController(ILogger<AuthenticationController> logger, 
         return Convert.ToBase64String(randomNumber);
     }
 
+    // Извлекает claims из протухшего access-токена
     private ClaimsPrincipal GetPrincipalFromExpiredToken(string token)
     {
         var tokenValidationParameters = new TokenValidationParameters
@@ -49,13 +50,14 @@ public class AuthenticationController(ILogger<AuthenticationController> logger, 
         return principal;
     }
 
+    // два токена: access-токен (15 мин) + refresh-токен (7 дней, хранится в БД).
     [HttpPost("Login")]
     public async Task<IActionResult> Login(UserDto user)
     {
         var findUser = await context.Users.FirstOrDefaultAsync(u => u.Login == user.Login && u.Password == user.Password);
         if (findUser is null)
             return Unauthorized("Invalid credentials");
-            
+
         var roleName = context.Roles.Find(findUser.RoleId)?.Name;
         if (roleName is null)
             return Unauthorized("Role not found");
@@ -66,8 +68,7 @@ public class AuthenticationController(ILogger<AuthenticationController> logger, 
             new Claim(ClaimTypes.Name, user.Login),
             new Claim(ClaimTypes.Role, roleName),
         };
-
-        // Access Token
+        
         var accessToken = new JwtSecurityToken(
             issuer: AuthOptions.ISSUER,
             audience: AuthOptions.AUDIENCE,
@@ -77,7 +78,7 @@ public class AuthenticationController(ILogger<AuthenticationController> logger, 
 
         var encodedAccessToken = new JwtSecurityTokenHandler().WriteToken(accessToken);
 
-        // Refresh Token
+
         var refreshToken = GenerateRefreshToken();
         findUser.RefreshToken = refreshToken;
         findUser.RefreshTokenExpiryTime = DateTime.UtcNow.AddDays(AuthOptions.REFRESH_TOKEN_LIFETIME_DAYS);
@@ -124,8 +125,9 @@ public class AuthenticationController(ILogger<AuthenticationController> logger, 
 
         var principal = GetPrincipalFromExpiredToken(tokenDto.AccessToken);
         var userId = int.Parse(principal.FindFirst(ClaimTypes.NameIdentifier)?.Value ?? "0");
-        
+
         var user = await context.Users.FindAsync(userId);
+
         if (user == null || user.RefreshToken != tokenDto.RefreshToken || user.RefreshTokenExpiryTime <= DateTime.UtcNow)
             return Unauthorized("Invalid refresh token");
 
@@ -140,6 +142,7 @@ public class AuthenticationController(ILogger<AuthenticationController> logger, 
         var encodedAccessToken = new JwtSecurityTokenHandler().WriteToken(newAccessToken);
         
         var newRefreshToken = GenerateRefreshToken();
+
         user.RefreshToken = newRefreshToken;
         user.RefreshTokenExpiryTime = DateTime.UtcNow.AddDays(AuthOptions.REFRESH_TOKEN_LIFETIME_DAYS);
         

@@ -10,7 +10,7 @@ namespace webParser.Controllers;
 
 [Route("api/[controller]")]
 [ApiController]
-//[Authorize]
+[Authorize]
 public class FaforiteSiteController(ILogger<HomeController> logger, AppDbContext context) : Controller
 {
     [HttpGet("all")]
