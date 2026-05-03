@@ -19,7 +19,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useTheme } from '@/contexts/ThemeContext';
 import { apiService, AnalyzedField, SiteField } from '@/lib/apiService';
 
-type SortOption = 'name-asc' | 'name-desc' | 'id-asc' | 'id-desc';
+type SortOption = 'name-asc' | 'name-desc';
 
 interface FilterCondition {
     id: string;
@@ -36,8 +36,9 @@ export default function Index() {
     const { token, userData } = useAuth();
     const { isDark } = useTheme();
     const s = isDark ? darkStyles : lightStyles;
-    const { sites, loading, fetchSites, fieldNames, allParsedData, fetchFieldNames, fetchAllParsedData } = useSites();
+    const { sites, loading, fetchSites, fieldNames, allParsedData, fetchFieldNames, fetchAllParsedData, isFavorite, addToFavorites, removeFromFavorites, favoriteSiteIds } = useSites();
     const [expandedId, setExpandedId] = useState<number | null>(null);
+    const [showFavoritesOnly, setShowFavoritesOnly] = useState(false);
     const [fields, setFields] = useState<Record<number, SiteField[]>>({});
     const [loadingFields, setLoadingFields] = useState<Record<number, boolean>>({});
     const [refreshing, setRefreshing] = useState(false);
@@ -54,8 +55,25 @@ export default function Index() {
         fetchAllParsedData();
     }, [fetchSites, fetchFieldNames, fetchAllParsedData]);
 
+    const handleFavoritePress = async (siteId: number) => {
+        if (!token) return;
+        try {
+            if (isFavorite(siteId)) {
+                await removeFromFavorites(siteId);
+            } else {
+                await addToFavorites(siteId);
+            }
+        } catch (e) {
+            console.error('Ошибка при изменении избранного:', e);
+        }
+    };
+
     const filteredAndSortedSites = useMemo(() => {
         let filtered = [...sites];
+
+        if (showFavoritesOnly) {
+            filtered = filtered.filter(site => favoriteSiteIds.includes(site.Id));
+        }
 
         if (searchQuery.trim()) {
             const query = searchQuery.toLowerCase();
@@ -100,12 +118,10 @@ export default function Index() {
         switch (sortBy) {
             case 'name-asc': filtered.sort((a, b) => a.Name.localeCompare(b.Name)); break;
             case 'name-desc': filtered.sort((a, b) => b.Name.localeCompare(a.Name)); break;
-            case 'id-asc': filtered.sort((a, b) => a.Id - b.Id); break;
-            case 'id-desc': filtered.sort((a, b) => b.Id - a.Id); break;
         }
 
         return filtered;
-    }, [sites, searchQuery, sortBy, filterConditions, allParsedData, fieldNames]);
+    }, [sites, searchQuery, sortBy, filterConditions, allParsedData, fieldNames, showFavoritesOnly, favoriteSiteIds]);
 
     const activeFiltersCount = filterConditions.filter(c => c.fieldNameId !== null).length;
 
@@ -133,7 +149,7 @@ export default function Index() {
     };
 
     const handleSortChange = () => {
-        const options: SortOption[] = ['name-asc', 'name-desc', 'id-asc', 'id-desc'];
+        const options: SortOption[] = ['name-asc', 'name-desc'];
         setSortBy(prev => options[(options.indexOf(prev) + 1) % options.length]);
     };
 
@@ -141,8 +157,6 @@ export default function Index() {
         switch (sortBy) {
             case 'name-asc': return 'По названию (А-Я)';
             case 'name-desc': return 'По названию (Я-А)';
-            case 'id-asc': return 'По ID (↑)';
-            case 'id-desc': return 'По ID (↓)';
         }
     };
 
@@ -208,6 +222,17 @@ export default function Index() {
                         {token ? `Пользователь: ${userData?.login || 'без имени'}` : 'Войдите для полного доступа'}
                     </Text>
                 </View>
+                {token && (
+                    <TouchableOpacity
+                        style={[s.favoritesToggle, showFavoritesOnly && s.favoritesToggleActive]}
+                        onPress={() => setShowFavoritesOnly(prev => !prev)}
+                    >
+                        <Feather name="star" size={18} color={showFavoritesOnly ? '#fff' : '#f59e0b'} />
+                        <Text style={[s.favoritesToggleText, showFavoritesOnly && s.favoritesToggleTextActive]}>
+                            Избранное
+                        </Text>
+                    </TouchableOpacity>
+                )}
             </View>
 
             <View style={s.controls}>
@@ -272,7 +297,18 @@ export default function Index() {
                                 <View style={s.cardHeader}>
                                     <View style={s.cardTitleRow}>
                                         <Text style={s.cardTitle}>{item.Name}</Text>
-                                        <Text style={s.cardId}>#{item.Id}</Text>
+                                        {token && (
+                                            <TouchableOpacity
+                                                onPress={() => handleFavoritePress(item.Id)}
+                                                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                                            >
+                                                <Feather
+                                                    name="star"
+                                                    size={18}
+                                                    color={isFavorite(item.Id) ? '#f59e0b' : '#8aa0b8'}
+                                                />
+                                            </TouchableOpacity>
+                                        )}
                                     </View>
                                     <View style={s.cardUrlRow}>
                                         <Feather name="link" size={12} color="#4a6fa5" />
@@ -440,6 +476,14 @@ const lightStyles = StyleSheet.create({
     header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 16 },
     title: { fontSize: 24, fontWeight: '700', color: '#1f2d3d' },
     subtitle: { color: '#6c7a89', marginTop: 4 },
+    favoritesToggle: {
+        flexDirection: 'row', alignItems: 'center', backgroundColor: 'white',
+        borderRadius: 12, paddingHorizontal: 14, paddingVertical: 10,
+        borderWidth: 1, borderColor: '#f59e0b',
+    },
+    favoritesToggleActive: { backgroundColor: '#f59e0b', borderColor: '#f59e0b' },
+    favoritesToggleText: { marginLeft: 6, fontSize: 13, color: '#f59e0b', fontWeight: '600' },
+    favoritesToggleTextActive: { color: '#fff' },
     controls: { paddingHorizontal: 16, paddingBottom: 12, gap: 10 },
     searchContainer: {
         flexDirection: 'row', alignItems: 'center', backgroundColor: 'white',
@@ -533,6 +577,14 @@ const darkStyles = StyleSheet.create({
     header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 16 },
     title: { fontSize: 24, fontWeight: '700', color: '#f1f5f9' },
     subtitle: { color: '#9ca3af', marginTop: 4 },
+    favoritesToggle: {
+        flexDirection: 'row', alignItems: 'center', backgroundColor: '#1a1a1a',
+        borderRadius: 12, paddingHorizontal: 14, paddingVertical: 10,
+        borderWidth: 1, borderColor: '#f59e0b',
+    },
+    favoritesToggleActive: { backgroundColor: '#f59e0b', borderColor: '#f59e0b' },
+    favoritesToggleText: { marginLeft: 6, fontSize: 13, color: '#f59e0b', fontWeight: '600' },
+    favoritesToggleTextActive: { color: '#fff' },
     controls: { paddingHorizontal: 16, paddingBottom: 12, gap: 10 },
     searchContainer: {
         flexDirection: 'row', alignItems: 'center', backgroundColor: '#1a1a1a',

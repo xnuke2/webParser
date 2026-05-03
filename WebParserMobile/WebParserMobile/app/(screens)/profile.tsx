@@ -74,20 +74,27 @@ export default function ProfileScreen() {
     };
 
     const isAdmin = userData?.role === 'Администратор';
+    const isEditor = userData?.role === 'Редактор';
 
     const getRoleIcon = () => {
         if (!userData?.role) return 'user';
-        return isAdmin ? 'shield' : 'user-check';
+        if (isAdmin) return 'shield';
+        if (isEditor) return 'edit';
+        return 'user-check';
     };
 
     const getRoleColor = () => {
         if (!userData?.role) return '#4a6fa5';
-        return isAdmin ? '#e74c3c' : '#27ae60';
+        if (isAdmin) return '#e74c3c';
+        if (isEditor) return '#f39c12';
+        return '#27ae60';
     };
 
     const getRoleDescription = () => {
         if (!userData?.role) return 'Пользователь';
-        return isAdmin ? 'Администратор' : 'Обычный пользователь';
+        if (isAdmin) return 'Администратор';
+        if (isEditor) return 'Редактор';
+        return 'Обычный пользователь';
     };
 
     if (isLoading) {

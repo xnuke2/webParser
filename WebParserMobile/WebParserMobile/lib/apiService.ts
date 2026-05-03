@@ -367,7 +367,16 @@ class ApiService {
             }),
         });
 
-        return response.json();
+        if (response.ok) {
+            return { success: true };
+        }
+
+        const text = await response.text();
+        const errorMap: Record<string, string> = {
+            'Login is already occupied': 'Этот логин уже занят',
+        };
+        const error = errorMap[text.trim()] ?? text ?? 'Ошибка регистрации';
+        return { success: false, error };
     }
 
     // Sites methods
