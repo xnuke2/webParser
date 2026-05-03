@@ -437,6 +437,50 @@ class ApiService {
         return response.json();
     }
 
+    async updateAnalyzedSite(siteId: number, data: { Name: string; Url: string }): Promise<any> {
+        const response = await this.fetchWithTokenRefresh(`/api/AnalyzedSite/${siteId}`, {
+            method: 'PUT',
+            body: JSON.stringify(data),
+        });
+        if (!response.ok) {
+            const errorText = await response.text();
+            throw new Error(errorText || `Ошибка при обновлении сайта: ${response.status}`);
+        }
+        return response.json();
+    }
+
+    async deleteAnalyzedSite(siteId: number): Promise<void> {
+        const response = await this.fetchWithTokenRefresh(`/api/AnalyzedSite/${siteId}`, {
+            method: 'DELETE',
+        });
+        if (!response.ok) {
+            const errorText = await response.text();
+            throw new Error(errorText || `Ошибка при удалении сайта: ${response.status}`);
+        }
+    }
+
+    async updateAnalyzedField(fieldId: number, data: { Name?: string; FieldToGet?: string; FieldNameId?: number }): Promise<any> {
+        const response = await this.fetchWithTokenRefresh(`/api/AnalyzedField/${fieldId}`, {
+            method: 'PATCH',
+            body: JSON.stringify(data),
+        });
+        if (!response.ok) {
+            const errorText = await response.text();
+            throw new Error(errorText || `Ошибка при обновлении поля: ${response.status}`);
+        }
+        return response.json();
+    }
+
+    async deleteAnalyzedField(fieldId: number): Promise<void> {
+        const response = await this.fetchWithTokenRefresh(`/api/AnalyzedField/${fieldId}`, {
+            method: 'DELETE',
+        });
+        if (!response.ok) {
+            const errorText = await response.text();
+            throw new Error(errorText || `Ошибка при удалении поля: ${response.status}`);
+        }
+    }
+
     async createAnalyzedField(data: { Name: string; FieldToGet: string; AnalyzedSiteId: number; FieldNameId?: number }): Promise<any> {
         const response = await this.fetchWithTokenRefresh('/api/AnalyzedField', {
             method: 'POST',
@@ -448,6 +492,17 @@ class ApiService {
             throw new Error(errorText || `Ошибка при создании поля: ${response.status}`);
         }
 
+        return response.json();
+    }
+
+    async refreshSiteParsedData(siteId: number): Promise<SiteField[]> {
+        const response = await this.fetchWithTokenRefresh(`/api/Parser/${siteId}/refresh`, {
+            method: 'POST',
+        });
+        if (!response.ok) {
+            const errorText = await response.text();
+            throw new Error(errorText || `Ошибка при парсинге сайта: ${response.status}`);
+        }
         return response.json();
     }
 

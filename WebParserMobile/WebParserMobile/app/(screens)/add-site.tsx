@@ -1,4 +1,4 @@
-import React, { useRef, useState } from 'react';
+import React, { useRef, useState, useEffect } from 'react';
 import {
     Alert,
     Modal,
@@ -14,9 +14,11 @@ import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
 import { StatusBar } from 'expo-status-bar';
 import { Feather } from '@expo/vector-icons';
 import { WebView } from 'react-native-webview';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useSites } from '@/contexts/SitesContext';
-import { apiService } from '@/lib/apiService';
+import { apiService, AnalyzedField } from '@/lib/apiService';
 import { useTheme } from '@/contexts/ThemeContext';
+import { useLocalSearchParams, useRouter } from 'expo-router';
 
 type TagField = {
     id: number;
@@ -24,6 +26,10 @@ type TagField = {
     fieldNameId: number;
     selector: string;
     previewText: string;
+    // для режима редактирования: id существующего поля на сервере
+    serverId?: number;
+    // помечаем поля, которые нужно удалить
+    deleted?: boolean;
 };
 
 // JS инжектируется в WebView — подсвечивает элементы при наведении, отправляет селектор при клике,
@@ -256,7 +262,12 @@ export default function AddSiteScreen() {
     const insets = useSafeAreaInsets();
     const { isDark } = useTheme();
     const s = isDark ? darkStyles : lightStyles;
-    const { fieldNames } = useSites();
+    const { fieldNames, fetchSites, allParsedData, fetchAllParsedData } = useSites();
+    const router = useRouter();
+    const params = useLocalSearchParams<{ siteId?: string }>();
+    const siteId = params.siteId ? parseInt(params.siteId, 10) : null;
+    const isEditMode = siteId !== null;
+
     const [name, setName] = useState('');
     const [url, setUrl] = useState('');
     const [urlInput, setUrlInput] = useState('');
@@ -266,9 +277,68 @@ export default function AddSiteScreen() {
     const [previewVisible, setPreviewVisible] = useState(false);
     const [webViewLoading, setWebViewLoading] = useState(false);
     const [saving, setSaving] = useState(false);
+    const [loadingData, setLoadingData] = useState(isEditMode);
     const webViewRef = useRef<any>(null);
 
     const activeField = fields.find(f => f.id === activeFieldId) ?? null;
+
+    // Сбрасываем форму когда открываем таб без siteId (режим добавления)
+    useEffect(() => {
+        if (!isEditMode) {
+            setName('');
+            setUrl('');
+            setUrlInput('');
+            setWebViewUrl('');
+            setFields([]);
+            setActiveFieldId(null);
+            setLoadingData(false);
+            webViewRef.current?.injectJavaScript(`window.__fieldSelectors = {}; true;`);
+        }
+    }, [isEditMode]);
+
+    // Загружаем данные сайта при редактировании
+    useEffect(() => {
+        if (!isEditMode || !siteId) return;
+        (async () => {
+            setLoadingData(true);
+            try {
+                const [allSites, analyzedFields] = await Promise.all([
+                    apiService.getAllSites(),
+                    apiService.getAnalyzedFields(siteId),
+                ]);
+                const site = allSites.find(s => s.Id === siteId);
+                if (site) {
+                    setName(site.Name);
+                    setUrl(site.Url);
+                    setUrlInput(site.Url);
+                    setWebViewUrl(site.Url);
+                }
+                if (analyzedFields.length > 0) {
+                    const loaded: TagField[] = analyzedFields.map(f => {
+                        const parsed = allParsedData.find(
+                            p => p.SiteId === siteId && p.Field.toLowerCase() === f.Name.toLowerCase()
+                        );
+                        return {
+                            id: f.Id,
+                            serverId: f.Id,
+                            name: f.Name,
+                            fieldNameId: f.FieldNameId ?? 0,
+                            selector: f.FieldToGet,
+                            previewText: parsed?.Data ?? '',
+                        };
+                    });
+                    setFields(loaded);
+                    // Подсвечиваем уже сохранённые селекторы после загрузки WebView
+                    const firstEmpty = loaded.find(f => !f.selector);
+                    setActiveFieldId(firstEmpty?.id ?? loaded[0]?.id ?? null);
+                }
+            } catch (e: any) {
+                Alert.alert('Ошибка', e?.message || 'Не удалось загрузить данные сайта');
+            } finally {
+                setLoadingData(false);
+            }
+        })();
+    }, [siteId]);
 
     const addField = (fieldName: string, fieldNameId: number) => {
         if (fields.some(f => f.name === fieldName)) return;
@@ -288,7 +358,12 @@ export default function AddSiteScreen() {
     };
 
     const removeField = (fieldId: number) => {
-        setFields(prev => prev.filter(f => f.id !== fieldId));
+        setFields(prev => prev.map(f => {
+            if (f.id !== fieldId) return f;
+            // Если поле уже есть на сервере — помечаем deleted, не удаляем из списка
+            if (f.serverId) return { ...f, deleted: true };
+            return null as any;
+        }).filter(Boolean));
         if (activeFieldId === fieldId) setActiveFieldId(null);
         webViewRef.current?.injectJavaScript(
             `window.dispatchEvent(new MessageEvent('message', { data: JSON.stringify({ cmd: 'removeSelector', fieldId: ${fieldId} }) })); true;`
@@ -325,6 +400,16 @@ export default function AddSiteScreen() {
         setPreviewVisible(true);
     };
 
+    const onWebViewLoaded = () => {
+        setWebViewLoading(false);
+        // Восстанавливаем подсветку для уже заполненных полей
+        fields.filter(f => !f.deleted && f.selector).forEach(f => {
+            webViewRef.current?.injectJavaScript(
+                `window.dispatchEvent(new MessageEvent('message', { data: JSON.stringify({ cmd: 'setSelector', fieldId: ${f.id}, selector: ${JSON.stringify(f.selector)} }) })); true;`
+            );
+        });
+    };
+
     const onWebViewMessage = (event: any) => {
         if (!activeFieldId) return;
         try {
@@ -341,30 +426,83 @@ export default function AddSiteScreen() {
         const finalUrl = urlInput.trim().match(/^https?:\/\//i) ? urlInput.trim() : `https://${urlInput.trim()}`;
         setSaving(true);
         try {
-            const created = await apiService.createAnalyzedSite({ Name: name.trim(), Url: finalUrl });
-            const siteId = created?.Id ?? created?.id;
-            if (siteId) {
-                for (const field of fields) {
-                    if (!field.selector.trim()) continue;
-                    const payload = {
-                        Name: field.name,
-                        FieldToGet: field.selector.trim(),
-                        AnalyzedSiteId: siteId,
-                        FieldNameId: field.fieldNameId,
-                    };
-                    console.log('[AddSite] createAnalyzedField payload:', JSON.stringify(payload));
-                    await apiService.createAnalyzedField(payload);
+            if (isEditMode && siteId) {
+                // --- Режим редактирования ---
+                await apiService.updateAnalyzedSite(siteId, { Name: name.trim(), Url: finalUrl });
+
+                const updatedFields = [...fields];
+                for (const field of updatedFields) {
+                    if (field.deleted && field.serverId) {
+                        await apiService.deleteAnalyzedField(field.serverId);
+                    } else if (!field.deleted && field.selector.trim()) {
+                        if (field.serverId) {
+                            await apiService.updateAnalyzedField(field.serverId, {
+                                Name: field.name,
+                                FieldToGet: field.selector.trim(),
+                                FieldNameId: field.fieldNameId || undefined,
+                            });
+                        } else {
+                            const created = await apiService.createAnalyzedField({
+                                Name: field.name,
+                                FieldToGet: field.selector.trim(),
+                                AnalyzedSiteId: siteId,
+                                FieldNameId: field.fieldNameId || undefined,
+                            });
+                            const newServerId = created?.Id ?? created?.id;
+                            if (newServerId) {
+                                field.serverId = newServerId;
+                            }
+                        }
+                    }
                 }
+                setFields(updatedFields);
+
+                await fetchSites();
+                // Инвалидируем кэш и запускаем парсинг с новыми полями
+                try {
+                    await apiService.refreshSiteParsedData(siteId);
+                    await AsyncStorage.removeItem('parsedData_cache');
+                    await fetchAllParsedData();
+                } catch (e) {
+                    console.warn('Парсинг после сохранения не удался:', e);
+                }
+                Alert.alert('Готово', 'Сайт обновлён', [
+                    { text: 'OK', onPress: () => router.back() }
+                ]);
+            } else {
+                // --- Режим добавления ---
+                const created = await apiService.createAnalyzedSite({ Name: name.trim(), Url: finalUrl });
+                const newSiteId = created?.Id ?? created?.id;
+                if (newSiteId) {
+                    for (const field of fields) {
+                        if (!field.selector.trim()) continue;
+                        await apiService.createAnalyzedField({
+                            Name: field.name,
+                            FieldToGet: field.selector.trim(),
+                            AnalyzedSiteId: newSiteId,
+                            FieldNameId: field.fieldNameId,
+                        });
+                    }
+                }
+                // Запускаем парсинг для нового сайта
+                if (newSiteId) {
+                    try {
+                        await apiService.refreshSiteParsedData(newSiteId);
+                        await AsyncStorage.removeItem('parsedData_cache');
+                        await fetchAllParsedData();
+                    } catch (e) {
+                        console.warn('Парсинг после добавления не удался:', e);
+                    }
+                }
+                setName('');
+                setUrlInput('');
+                setUrl('');
+                setWebViewUrl('');
+                setFields([]);
+                setActiveFieldId(null);
+                webViewRef.current?.injectJavaScript(`window.__fieldSelectors = {}; true;`);
+                Alert.alert('Готово', 'Сайт добавлен');
             }
-            setName('');
-            setUrlInput('');
-            setUrl('');
-            setWebViewUrl('');
-            setFields([]);
-            setActiveFieldId(null);
-            // сбрасываем подсветки в WebView
-            webViewRef.current?.injectJavaScript(`window.__fieldSelectors = {}; true;`);
-            Alert.alert('Готово', 'Сайт добавлен');
         } catch (error: any) {
             Alert.alert('Ошибка', error?.message || 'Не удалось сохранить сайт');
         } finally {
@@ -372,13 +510,29 @@ export default function AddSiteScreen() {
         }
     };
 
+    if (loadingData) {
+        return (
+            <SafeAreaView style={s.container}>
+                <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
+                    <ActivityIndicator size="large" color="#4a6fa5" />
+                    <Text style={[s.emptyText, { marginTop: 12 }]}>Загрузка данных...</Text>
+                </View>
+            </SafeAreaView>
+        );
+    }
+
     return (
         <SafeAreaView style={s.container}>
             <StatusBar style="dark" />
 
             <View style={s.header}>
-                <Text style={s.title}>Добавление сайта</Text>
-                <Feather name="plus-circle" size={26} color="#4a6fa5" />
+                {isEditMode && (
+                    <TouchableOpacity onPress={() => router.back()} style={{ marginRight: 10 }}>
+                        <Feather name="arrow-left" size={24} color="#4a6fa5" />
+                    </TouchableOpacity>
+                )}
+                <Text style={s.title}>{isEditMode ? 'Редактирование' : 'Добавление сайта'}</Text>
+                <Feather name={isEditMode ? 'edit-2' : 'plus-circle'} size={26} color="#4a6fa5" />
             </View>
 
             <ScrollView style={s.scroll} contentContainerStyle={s.scrollContent} showsVerticalScrollIndicator={false}>
@@ -421,16 +575,16 @@ export default function AddSiteScreen() {
                 <View style={s.card}>
                     <View style={s.sectionRow}>
                         <Text style={s.sectionLabel}>Параметры</Text>
-                        {fields.some(f => f.selector) && (
-                            <Text style={s.fieldsCountText}>{fields.filter(f => f.selector).length} / {fields.length}</Text>
+                        {fields.filter(f => !f.deleted).some(f => f.selector) && (
+                            <Text style={s.fieldsCountText}>{fields.filter(f => !f.deleted && f.selector).length} / {fields.filter(f => !f.deleted).length}</Text>
                         )}
                     </View>
 
-                    {fields.length === 0 && (
+                    {fields.filter(f => !f.deleted).length === 0 && (
                         <Text style={s.emptyText}>Откройте предпросмотр чтобы настроить поля</Text>
                     )}
 
-                    {fields.map(field => (
+                    {fields.filter(f => !f.deleted).map(field => (
                         <TouchableOpacity
                             key={field.id}
                             style={[s.fieldCard, activeFieldId === field.id && s.fieldCardActive]}
@@ -467,13 +621,15 @@ export default function AddSiteScreen() {
                         </TouchableOpacity>
                     ))}
 
-                    {fields.length > 0 && !fields.some(f => f.selector) && (
+                    {fields.filter(f => !f.deleted).length > 0 && !fields.filter(f => !f.deleted).some(f => f.selector) && (
                         <Text style={s.hintText}>Откройте предпросмотр и тапните по элементам страницы</Text>
                     )}
                 </View>
 
                 <TouchableOpacity style={s.primaryButton} onPress={saveSite} disabled={saving}>
-                    <Text style={s.primaryButtonText}>{saving ? 'Сохранение...' : 'Добавить сайт'}</Text>
+                    <Text style={s.primaryButtonText}>
+                        {saving ? 'Сохранение...' : isEditMode ? 'Сохранить изменения' : 'Добавить сайт'}
+                    </Text>
                 </TouchableOpacity>
 
             </ScrollView>
@@ -526,7 +682,7 @@ export default function AddSiteScreen() {
                         injectedJavaScript={INJECTED_JS}
                         onMessage={onWebViewMessage}
                         onLoadStart={() => setWebViewLoading(true)}
-                        onLoadEnd={() => setWebViewLoading(false)}
+                        onLoadEnd={onWebViewLoaded}
                         javaScriptEnabled
                         domStorageEnabled
                         userAgent="Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1"
@@ -539,10 +695,10 @@ export default function AddSiteScreen() {
                     )}
 
                     {/* Панель полей внизу предпросмотра */}
-                    {fields.length > 0 && (
+                    {fields.filter(f => !f.deleted).length > 0 && (
                         <View style={s.fieldsPanel}>
                             <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={s.fieldsPanelContent}>
-                                {fields.map(field => (
+                                {fields.filter(f => !f.deleted).map(field => (
                                     <TouchableOpacity
                                         key={field.id}
                                         style={[s.fieldChip, activeFieldId === field.id && s.fieldChipActive, !!field.selector && s.fieldChipDone]}

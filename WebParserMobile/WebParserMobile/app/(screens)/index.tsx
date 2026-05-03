@@ -1,6 +1,7 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
     ActivityIndicator,
+    Alert,
     FlatList,
     Modal,
     RefreshControl,
@@ -14,10 +15,12 @@ import {
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
 import { Feather } from '@expo/vector-icons';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useSites } from '@/contexts/SitesContext';
 import { useAuth } from '@/contexts/AuthContext';
 import { useTheme } from '@/contexts/ThemeContext';
 import { apiService, AnalyzedField, SiteField } from '@/lib/apiService';
+import { useFocusEffect, useRouter } from 'expo-router';
 
 type SortOption = 'name-asc' | 'name-desc';
 
@@ -36,7 +39,10 @@ export default function Index() {
     const { token, userData } = useAuth();
     const { isDark } = useTheme();
     const s = isDark ? darkStyles : lightStyles;
-    const { sites, loading, fetchSites, fieldNames, allParsedData, fetchFieldNames, fetchAllParsedData, isFavorite, addToFavorites, removeFromFavorites, favoriteSiteIds } = useSites();
+    const router = useRouter();
+    const { sites, loading, fetchSites, fieldNames, allParsedData, fetchFieldNames, fetchAllParsedData, isFavorite, addToFavorites, removeFromFavorites, favoriteSiteIds, deleteSite } = useSites();
+
+    const canEdit = token && (userData?.role === 'Администратор' || userData?.role === 'Редактор');
     const [expandedId, setExpandedId] = useState<number | null>(null);
     const [showFavoritesOnly, setShowFavoritesOnly] = useState(false);
     const [fields, setFields] = useState<Record<number, SiteField[]>>({});
@@ -54,6 +60,38 @@ export default function Index() {
         fetchFieldNames();
         fetchAllParsedData();
     }, [fetchSites, fetchFieldNames, fetchAllParsedData]);
+
+    // При возврате на экран сбрасываем локальный кэш полей чтобы подтянуть свежие данные
+    const isFirstFocus = useRef(true);
+    useFocusEffect(useCallback(() => {
+        if (isFirstFocus.current) {
+            isFirstFocus.current = false;
+            return;
+        }
+        setFields({});
+        setExpandedId(null);
+    }, []));
+
+    const handleDeleteSite = (siteId: number, siteName: string) => {
+        Alert.alert(
+            'Удалить сайт',
+            `Удалить "${siteName}"? Это действие нельзя отменить.`,
+            [
+                { text: 'Отмена', style: 'cancel' },
+                {
+                    text: 'Удалить',
+                    style: 'destructive',
+                    onPress: async () => {
+                        try {
+                            await deleteSite(siteId);
+                        } catch (e: any) {
+                            Alert.alert('Ошибка', e?.message || 'Не удалось удалить сайт');
+                        }
+                    },
+                },
+            ]
+        );
+    };
 
     const handleFavoritePress = async (siteId: number) => {
         if (!token) return;
@@ -125,10 +163,16 @@ export default function Index() {
 
     const activeFiltersCount = filterConditions.filter(c => c.fieldNameId !== null).length;
 
-    const onRefresh = useCallback(() => {
+    const onRefresh = useCallback(async () => {
         setRefreshing(true);
-        fetchSites().finally(() => setRefreshing(false));
-    }, [fetchSites]);
+        setFields({});
+        try {
+            await AsyncStorage.removeItem('parsedData_cache');
+            await Promise.all([fetchSites(), fetchAllParsedData()]);
+        } finally {
+            setRefreshing(false);
+        }
+    }, [fetchSites, fetchAllParsedData]);
 
     const handleCardPress = async (siteId: number) => {
         if (expandedId === siteId) {
@@ -297,18 +341,36 @@ export default function Index() {
                                 <View style={s.cardHeader}>
                                     <View style={s.cardTitleRow}>
                                         <Text style={s.cardTitle}>{item.Name}</Text>
-                                        {token && (
-                                            <TouchableOpacity
-                                                onPress={() => handleFavoritePress(item.Id)}
-                                                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                                            >
-                                                <Feather
-                                                    name="star"
-                                                    size={18}
-                                                    color={isFavorite(item.Id) ? '#f59e0b' : '#8aa0b8'}
-                                                />
-                                            </TouchableOpacity>
-                                        )}
+                                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                                            {canEdit && (
+                                                <TouchableOpacity
+                                                    onPress={() => router.push(`/(screens)/add-site?siteId=${item.Id}`)}
+                                                    hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                                                >
+                                                    <Feather name="edit-2" size={16} color="#4a6fa5" />
+                                                </TouchableOpacity>
+                                            )}
+                                            {canEdit && (
+                                                <TouchableOpacity
+                                                    onPress={() => handleDeleteSite(item.Id, item.Name)}
+                                                    hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                                                >
+                                                    <Feather name="trash-2" size={16} color="#e74c3c" />
+                                                </TouchableOpacity>
+                                            )}
+                                            {token && (
+                                                <TouchableOpacity
+                                                    onPress={() => handleFavoritePress(item.Id)}
+                                                    hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                                                >
+                                                    <Feather
+                                                        name="star"
+                                                        size={18}
+                                                        color={isFavorite(item.Id) ? '#f59e0b' : '#8aa0b8'}
+                                                    />
+                                                </TouchableOpacity>
+                                            )}
+                                        </View>
                                     </View>
                                     <View style={s.cardUrlRow}>
                                         <Feather name="link" size={12} color="#4a6fa5" />

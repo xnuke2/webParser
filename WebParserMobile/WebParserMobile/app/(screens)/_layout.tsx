@@ -56,6 +56,12 @@ function AuthAwareTabs() {
             />
             <Tabs.Screen
                 name="add-site"
+                listeners={{
+                    tabPress: (e) => {
+                        e.preventDefault();
+                        router.replace('/(screens)/add-site');
+                    },
+                }}
                 options={canAddSite ? {
                     title: 'Добавить',
                     tabBarIcon: ({ color, size }) => (
@@ -78,6 +84,10 @@ function AuthAwareTabs() {
             />
             <Tabs.Screen
                 name="admin-users"
+                options={{ href: null }}
+            />
+            <Tabs.Screen
+                name="edit-site"
                 options={{ href: null }}
             />
         </Tabs>

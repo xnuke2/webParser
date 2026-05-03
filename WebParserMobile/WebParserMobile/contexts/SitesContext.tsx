@@ -18,6 +18,7 @@ interface SitesContextType {
     addToFavorites: (siteId: number) => Promise<void>;
     removeFromFavorites: (siteId: number) => Promise<void>;
     isFavorite: (siteId: number) => boolean;
+    deleteSite: (siteId: number) => Promise<void>;
 }
 
 const SitesContext = createContext<SitesContextType | undefined>(undefined);
@@ -142,6 +143,12 @@ export const SitesProvider = ({ children }: { children: React.ReactNode }) => {
         return favoriteSiteIds.includes(siteId);
     };
 
+    const deleteSite = async (siteId: number): Promise<void> => {
+        await apiService.deleteAnalyzedSite(siteId);
+        setSites(prev => prev.filter(s => s.Id !== siteId));
+        setFavoriteSiteIds(prev => prev.filter(id => id !== siteId));
+    };
+
     useEffect(() => {
         fetchSites();
         fetchFieldNames();
@@ -172,7 +179,8 @@ export const SitesProvider = ({ children }: { children: React.ReactNode }) => {
             fetchAllParsedData,
             addToFavorites,
             removeFromFavorites,
-            isFavorite
+            isFavorite,
+            deleteSite
         }}>
             {children}
         </SitesContext.Provider>
