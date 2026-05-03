@@ -65,6 +65,51 @@ public class ParserController(ILogger<ParserController> logger, AppDbContext con
             return StatusCode(500, $"Internal server error: {ex.Message}");
         }
     }
+    [HttpPost("{id}/refresh")]
+    [AllowAnonymous]
+    public async Task<IActionResult> RefreshSite([FromRoute] int id)
+    {
+        try
+        {
+            var site = context.AnalyzedSites.Find(id);
+            if (site == null)
+                return BadRequest("Site not found");
+
+            var fields = context.AnalyzedFields
+                .Where(f => f.AnalyzedSiteId == id)
+                .Select(f => new DataField { Field = f.Name, Data = f.FieldToGet })
+                .ToList();
+
+            if (fields.Count == 0)
+                return BadRequest("No Fields found");
+
+            var page = await htmlService.GetHtmlWithPlaywrightAsync(site.Url);
+            var result = stringParser.ParseString(page, fields);
+
+            // Удаляем старый кэш и сохраняем новый
+            var old = context.ParsedData.Where(p => p.SiteId == id).ToList();
+            context.ParsedData.RemoveRange(old);
+
+            var now = DateTime.UtcNow;
+            context.ParsedData.AddRange(result.Select(r => new Models.Database.ParsedData
+            {
+                SiteId = id,
+                Field = r.Field,
+                Data = r.Data,
+                UpdatedAt = now
+            }));
+            await context.SaveChangesAsync();
+
+            logger.LogInformation("Refreshed parsed data for site {Id}", id);
+            return Ok(result.Select(f => new { f.Field, f.Data }).ToList());
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Error refreshing site ID: {Id}", id);
+            return StatusCode(500, $"Internal server error: {ex.Message}");
+        }
+    }
+
     [HttpGet("test")]
     [AllowAnonymous]
     public async Task<IActionResult> TestParser([FromQuery] string url, [FromQuery] string selector)

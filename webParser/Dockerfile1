@@ -33,14 +33,14 @@ RUN apt-get update && apt-get install -y \
 FROM mcr.microsoft.com/dotnet/sdk:9.0 AS build
 WORKDIR /src
 
-COPY ["webParser.csproj", "./"]
-RUN dotnet restore "webParser.csproj"
+COPY ["webParser/webParser.csproj", "webParser/"]
+RUN dotnet restore "webParser/webParser.csproj"
 
 COPY . .
-RUN dotnet build "webParser.csproj" -c Release -o /app/build
+RUN dotnet build "webParser/webParser.csproj" -c Release -o /app/build
 
 FROM build AS publish
-RUN dotnet publish "webParser.csproj" -c Release -o /app/publish
+RUN dotnet publish "webParser/webParser.csproj" -c Release -o /app/publish
 
 FROM base AS final
 WORKDIR /app

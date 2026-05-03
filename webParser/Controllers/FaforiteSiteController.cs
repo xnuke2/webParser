@@ -20,6 +20,7 @@ public class FaforiteSiteController(ILogger<HomeController> logger, AppDbContext
         return Ok(context.FavoriteSites.ToList());
     }
     [HttpGet("my")]
+    [Authorize]
     public IActionResult GetMy()
     {
         var id = Convert.ToInt32(User.FindFirst(ClaimTypes.NameIdentifier)?.Value);
@@ -39,6 +40,7 @@ public class FaforiteSiteController(ILogger<HomeController> logger, AppDbContext
     }
 
     [HttpPost]
+    [Authorize]
     public IActionResult Post([FromBody] FavoriteSiteDto site)
     {
 
@@ -58,6 +60,7 @@ public class FaforiteSiteController(ILogger<HomeController> logger, AppDbContext
     }
     
     [HttpDelete("{siteId}")]
+    [Authorize]
     public IActionResult Delete([FromRoute] int siteId)
     {
         var id = Convert.ToInt32(User.FindFirst(ClaimTypes.NameIdentifier)?.Value);
